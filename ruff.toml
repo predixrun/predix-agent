@@ -1,0 +1,32 @@
+line-length = 140
+target-version = "py312"
+exclude = [
+    ".git",
+    ".venv",
+    ".idea",
+    "__pycache__",
+    "build",
+    "dist"
+]
+
+[lint]
+select = [
+    "E",   # pycodestyle errors
+    "W",   # pycodestyle warnings
+    "F",   # pyflakes
+    "I",   # isort
+    "B",   # flake8-bugbear
+    "UP",  # pyupgrade
+]
+extend-select = ["B"]
+ignore = ["E501"]  # ignore line length rule
+
+[lint.per-file-ignores]
+"__init__.py" = ["E402"]
+"**/{tests,docs,tools}/*" = ["E402"]
+
+# Format settings
+[format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "auto"
