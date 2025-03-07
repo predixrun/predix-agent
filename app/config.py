@@ -14,6 +14,8 @@ logger = logging.getLogger(__name__)
 class Settings(BaseSettings):
     ENV: str = "DEV"
 
+    API_KEY: str
+
     OPENAI_API_KEY: str
     ANTHROPIC_API_KEY: str
 
