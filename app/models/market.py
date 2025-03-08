@@ -1,7 +1,5 @@
-import uuid
 from datetime import datetime
 from enum import Enum
-from typing import Any
 
 from pydantic import BaseModel, Field
 
@@ -23,38 +21,51 @@ class SelectionType(str, Enum):
 
 
 class Selection(BaseModel):
-    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     name: str
-    description: str | None = None
     type: SelectionType
+    description: str | None = None
 
 
 class Market(BaseModel):
-    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     creator_id: str
     title: str
     description: str
     type: str = "binary"
     status: MarketStatus = MarketStatus.DRAFT
-    selections: list[Selection]
-    close_date: datetime | None = None
     category: str = "sports"
-    event_details: dict[str, Any] = {}
-    created_at: datetime = Field(default_factory=datetime.now)
-    updated_at: datetime = Field(default_factory=datetime.now)
-
-
-class SelectionRequest(BaseModel):
-    user_id: str
-    conversation_id: str
-    market_id: str
-    selection_id: str
     amount: float = 1.0
+    currency: str = "SOL"
+    close_date: datetime | None = None
+    created_at: datetime = Field(default_factory=datetime.now)
 
 
-class ConfirmationRequest(BaseModel):
-    user_id: str
-    conversation_id: str
-    market_id: str
-    confirmed: bool
+class EventTeam(BaseModel):
+    id: int
+    name: str
 
+
+class EventLeague(BaseModel):
+    id: int
+    name: str
+    country: str
+
+
+class EventVenue(BaseModel):
+    name: str
+    city: str
+
+
+class Event(BaseModel):
+    type: str = "football_match"
+    fixture_id: int
+    home_team: EventTeam
+    away_team: EventTeam
+    league: EventLeague
+    start_time: datetime
+    venue: EventVenue | None = None
+
+
+class MarketPackage(BaseModel):
+    market: Market
+    selections: list[Selection]
+    event: Event
