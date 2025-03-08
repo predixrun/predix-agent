@@ -1,18 +1,20 @@
-import asyncio
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Request
 
-from app.config import setup_logging
+from app.config import logger, setup_logging
+from app.graph.chat_graph import init_graph
 from app.models.response_models import TemplateJSONResponse
 from app.routers.api import api_router
 
 setup_logging()
 
 
-# @asynccontextmanager
-# async def lifespan(app: FastAPI):
-#     yield
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    init_graph()
+    logger.info("LangGraph initialized")
+    yield
 
 
 def create_app() -> FastAPI:
@@ -20,7 +22,7 @@ def create_app() -> FastAPI:
         title="PrediX Agent Server",
         version="0.1.0",
         default_response_class=TemplateJSONResponse,
-        # lifespan=lifespan
+        lifespan=lifespan
     )
 
     app.include_router(api_router)
