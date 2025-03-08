@@ -2,3 +2,5 @@ fastapi~=0.115.11
 pytz~=2025.1
 pydantic-settings~=2.8.1
 uvicorn~=0.34.0
+langgraph~=0.3.5
+pydantic~=2.10.6
