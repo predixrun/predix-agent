@@ -91,15 +91,18 @@ async def process_message(state: ChatState) -> dict[str, Any]:
     """
     messages = state.get("messages", [])
     if not messages:
+        logger.info("No messages in state, ending conversation")
         return {"current_node": "end"}
 
     latest_message = messages[-1]
 
     # Skip if not a user message
     if latest_message["role"] != "user":
+        logger.info(f"Skipping non-user message with role: {latest_message['role']}")
         return {"current_node": "end"}
 
     content = latest_message["content"].lower()
+    logger.info(f"Processing user message: {content[:50]}...")
 
     # Convert messages to LangChain format
     lc_messages = []
@@ -132,12 +135,20 @@ Just respond with the category name, nothing else."""),
     intent = intent_result.content.strip().upper()
 
     logger.info(f"Detected intent: {intent}")
+    
+    # Check if the message itself contains the intent marker (for debugging)
+    if content == "market_creation":
+        logger.info("Direct MARKET_CREATION command detected")
+        return {"current_node": "create_market"}
 
     if "MARKET_CREATION" in intent:
+        logger.info("Routing to create_market based on intent")
         return {"current_node": "create_market"}
     elif "SPORTS_INFO" in intent:
+        logger.info("Routing to sports_info based on intent")
         return {"current_node": "sports_info"}
     else:
+        logger.info("Routing to general chat response")
         # General chat response
         chat_prompt = ChatPromptTemplate.from_messages([
             ("system", GENERAL_SYSTEM_PROMPT),
@@ -175,11 +186,11 @@ Identify:
 3. Time period (upcoming matches, past results, etc.)
 
 Format your response as JSON:
-{
+{{
     "teams": ["Team Name 1", "Team Name 2"],
     "league": "League Name",
     "time_period": "upcoming" or "past"
-}
+}}
 
 If any field is not mentioned, leave it as null or empty list []."""),
         ("human", latest_message)
@@ -238,9 +249,7 @@ Format your response in a readable way with the key information highlighted.
 If multiple fixtures/matches are available, focus on the most relevant ones.
 
 Don't mention that you're using API data; just present the information as facts."""),
-        ("human",
-         "User query: " + latest_message + "\n\nSports data: " + json.dumps(sports_data).replace("{", "{{").replace("}",
-                                                                                                                    "}}")),
+        ("human", f"User query: {latest_message}\n\nSports data: {json.dumps(sports_data).replace('{', '{{').replace('}', '}}')}")
     ])
 
     response_chain = response_prompt | llm
@@ -277,12 +286,12 @@ For sports markets, identify:
 4. Type of prediction (who will win, etc.)
 
 Format your response as JSON:
-{
+{{
     "teams": ["Team A", "Team B"],
     "event_date": "YYYY-MM-DD" or "this Sunday" or null if not specified,
     "bet_amount": number (in SOL),
     "prediction_type": "match_winner" or other relevant type
-}"""),
+}}"""),
         ("human", latest_message)
     ])
 
@@ -521,7 +530,7 @@ async def process_selection(state: ChatState) -> dict[str, Any]:
                 "role": "assistant",
                 "content": "I couldn't understand your selection. Please try again."
             }],
-            "current_node": "market_options"
+            "current_node": "end"
         }
 
     # Create betting amount request message
