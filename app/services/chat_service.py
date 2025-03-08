@@ -1,9 +1,8 @@
 import uuid
-from datetime import datetime
 
 from app.config import logger
 from app.db import langgraph_store
-from app.graph.market_graph import get_compiled_graph
+from app.graph.chat_graph import get_compiled_graph
 from app.models.chat import ChatResponse
 
 
@@ -54,6 +53,7 @@ async def process_chat_message(
                 "selected_id": None,
                 "bet_amount": None,
                 "creator_id": user_id,
+                "sports_data": None,
                 "current_node": None,
                 "context": {"user_id": user_id, "wallet_address": wallet_address}
             }
@@ -71,6 +71,7 @@ async def process_chat_message(
             "selected_id": None,
             "bet_amount": None,
             "creator_id": user_id,
+            "sports_data": None,
             "current_node": None,
             "context": {"user_id": user_id, "wallet_address": wallet_address}
         }
@@ -105,6 +106,7 @@ async def process_chat_message(
         # Determine message type based on current node
         current_node = result.get("current_node", "end")
         market_id = result.get("market_id")
+        sports_data = result.get("sports_data")
 
         if current_node == "wait_for_selection" and market_id:
             # Return market options
@@ -136,18 +138,14 @@ async def process_chat_message(
                 "title": result.get("title"),
                 "status": "open"
             }
+        elif sports_data:
+            # Sports search result
+            message_type = "sports_search"
+            data = sports_data
         else:
             # Regular text message
             message_type = "text"
             data = None
-
-        # Store user preferences or important information for future reference
-        if wallet_address:
-            langgraph_store.save_memory(
-                user_id,
-                "user_info",
-                {"wallet_address": wallet_address, "last_active": datetime.now().isoformat()}
-            )
 
         return ChatResponse(
             conversation_id=conversation_id,
@@ -163,7 +161,6 @@ async def process_chat_message(
             message="Sorry, I encountered an error processing your request.",
             message_type="error"
         )
-
 
 async def process_selection(
         user_id: str,
@@ -249,7 +246,6 @@ async def process_selection(
             message_type="error"
         )
 
-
 async def process_confirmation(
         user_id: str,
         market_id: str,
@@ -312,20 +308,6 @@ async def process_confirmation(
 
         if confirmed and result.get("status") == "open":
             # Market has been finalized
-
-            # Save the market in user's memory for future reference
-            langgraph_store.save_memory(
-                user_id,
-                "markets",
-                {
-                    "market_id": market_id,
-                    "title": result.get("title"),
-                    "created_at": datetime.now().isoformat(),
-                    "status": "open"
-                },
-                memory_id=market_id
-            )
-
             return ChatResponse(
                 conversation_id=conversation_id,
                 message=latest_message,

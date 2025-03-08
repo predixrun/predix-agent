@@ -23,7 +23,7 @@ def get_conversation_state(thread_id: str, checkpoint_id: str | None = None) -> 
     Returns:
         The current state of the conversation
     """
-    from app.graph.market_graph import get_compiled_graph
+    from app.graph.chat_graph import get_compiled_graph
 
     graph = get_compiled_graph()
 
@@ -49,7 +49,7 @@ def get_conversation_history(thread_id: str) -> list[dict[str, Any]]:
     Returns:
         A list of state snapshots representing the conversation history
     """
-    from app.graph.market_graph import get_compiled_graph
+    from app.graph.chat_graph import get_compiled_graph
 
     graph = get_compiled_graph()
 
@@ -78,7 +78,7 @@ def update_conversation_state(thread_id: str, values: dict[str, Any],
     Returns:
         The updated state
     """
-    from app.graph.market_graph import get_compiled_graph
+    from app.graph.chat_graph import get_compiled_graph
 
     graph = get_compiled_graph()
 
