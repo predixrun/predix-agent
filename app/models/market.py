@@ -44,16 +44,6 @@ class Market(BaseModel):
     updated_at: datetime = Field(default_factory=datetime.now)
 
 
-class UserBet(BaseModel):
-    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    user_id: str
-    market_id: str
-    selection_id: str
-    amount: float
-    currency: str = "SOL"
-    timestamp: datetime = Field(default_factory=datetime.now)
-
-
 class SelectionRequest(BaseModel):
     user_id: str
     conversation_id: str
