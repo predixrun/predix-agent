@@ -92,7 +92,7 @@ async def process_chat_message(
     config = {"configurable": {"thread_id": conversation_id}}
 
     try:
-        result = graph.invoke(input_state, config)
+        result = await graph.ainvoke(input_state, config)
 
         # Get the last assistant message
         assistant_messages = [msg for msg in result.get("messages", [])
@@ -162,6 +162,7 @@ async def process_chat_message(
             message_type="error"
         )
 
+
 async def process_selection(
         user_id: str,
         market_id: str,
@@ -211,7 +212,7 @@ async def process_selection(
     config = {"configurable": {"thread_id": conversation_id}}
 
     try:
-        result = graph.invoke(updated_state, config)
+        result = await graph.ainvoke(updated_state, config)
 
         # Get the last assistant message
         assistant_messages = [msg for msg in result.get("messages", [])
@@ -245,6 +246,7 @@ async def process_selection(
             message="Sorry, I encountered an error processing your selection.",
             message_type="error"
         )
+
 
 async def process_confirmation(
         user_id: str,
@@ -295,7 +297,7 @@ async def process_confirmation(
     config = {"configurable": {"thread_id": conversation_id}}
 
     try:
-        result = graph.invoke(updated_state, config)
+        result = await graph.ainvoke(updated_state, config)
 
         # Get the last assistant message
         assistant_messages = [msg for msg in result.get("messages", [])
