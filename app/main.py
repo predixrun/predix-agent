@@ -3,7 +3,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, HTTPException, Request
 
 from app.config import logger, setup_logging
-from app.graph.market_graph import init_graph
+from app.graph.chat_graph import init_graph
 from app.models.response_models import TemplateJSONResponse
 from app.routers.api import api_router
 
