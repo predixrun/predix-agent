@@ -57,7 +57,7 @@ class ChatState(TypedDict):
 
 # Initialize the LLM
 llm = ChatOpenAI(
-    model="gpt-4o-latest",
+    model="chatgpt-4o-latest",
     temperature=0.2,
     api_key=settings.OPENAI_API_KEY
 )
