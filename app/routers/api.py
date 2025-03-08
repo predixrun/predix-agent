@@ -3,7 +3,7 @@ from datetime import datetime
 from fastapi import APIRouter
 from fastapi.responses import JSONResponse
 
-from app.routers import blockchain, chat, market
+from app.routers import chat, market
 
 api_router = APIRouter()
 
@@ -28,4 +28,3 @@ async def health_check():
 
 api_router.include_router(chat.router, prefix="/api", tags=["chat"])
 api_router.include_router(market.router, prefix="/api", tags=["market"])
-api_router.include_router(blockchain.router, prefix="/api", tags=["blockchain"])

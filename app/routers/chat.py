@@ -1,10 +1,10 @@
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, Depends, HTTPException, status
 
 from app.db import langgraph_store
 from app.dependecies import verify_api_key
-from app.graph.market_graph import get_compiled_graph
+from app.graph.chat_graph import get_compiled_graph
 from app.models.chat import ChatRequest, ChatResponse
 from app.services.chat_service import process_chat_message
 
@@ -54,7 +54,7 @@ async def list_conversations(
 ):
     """
     List all conversation IDs.
-    This is for debugging purposes in the PoC.
+    for PoC debugging.
     """
     graph = get_compiled_graph()
 
@@ -71,7 +71,7 @@ async def get_conversation_history(
 ):
     """
     Get the history of state changes for a conversation.
-    This is for debugging purposes in the PoC.
+    for PoC debugging.
     """
     history = langgraph_store.get_conversation_history(conversation_id)
 
@@ -82,22 +82,3 @@ async def get_conversation_history(
         )
 
     return history
-
-
-@router.get("/memory/{user_id}/{memory_type}", response_model=list[dict[str, Any]])
-async def get_user_memories(
-        user_id: str,
-        memory_type: str,
-        query: str | None = None,
-        limit: int = Query(10, ge=1, le=100),
-        api_key: str = Depends(verify_api_key)
-):
-    """
-    Get a user's memories of a specific type.
-    """
-    memories = langgraph_store.get_memories(user_id, memory_type, query, limit)
-
-    if not memories:
-        return []
-
-    return memories
