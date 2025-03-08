@@ -122,15 +122,13 @@ async def process_message(state: ChatState) -> dict[str, Any]:
 
     # Detect intent with LLM
     intent_prompt = ChatPromptTemplate.from_messages([
-        ("system", """
-        Analyze the user's message and determine their intent.
-        Respond with one of these exact categories:
-        - MARKET_CREATION: If they want to create a prediction market
-        - SPORTS_INFO: If they're asking about sports information
-        - GENERAL_CHAT: For general questions or conversation
+        ("system", """Analyze the user's message and determine their intent.
+Respond with one of these exact categories:
+- MARKET_CREATION: If they want to create a prediction market
+- SPORTS_INFO: If they're asking about sports information
+- GENERAL_CHAT: For general questions or conversation
 
-        Just respond with the category name, nothing else.
-        """),
+Just respond with the category name, nothing else."""),
         ("human", content)
     ])
 
@@ -175,22 +173,20 @@ async def get_sports_info(state: ChatState) -> dict[str, Any]:
 
     # Extract query info with LLM
     query_prompt = ChatPromptTemplate.from_messages([
-        ("system", """
-        Extract the sports information request from the user's message.
-        Identify:
-        1. Team names
-        2. League/competition
-        3. Time period (upcoming matches, past results, etc.)
+        ("system", """Extract the sports information request from the user's message.
+Identify:
+1. Team names
+2. League/competition
+3. Time period (upcoming matches, past results, etc.)
 
-        Format your response as JSON:
-        {
-            "teams": ["Team Name 1", "Team Name 2"],
-            "league": "League Name",
-            "time_period": "upcoming" or "past"
-        }
+Format your response as JSON:
+{{
+    "teams": ["Team Name 1", "Team Name 2"],
+    "league": "League Name",
+    "time_period": "upcoming" or "past"
+}}
 
-        If any field is not mentioned, leave it as null or empty list [].
-        """),
+If any field is not mentioned, leave it as null or empty list []."""),
         ("human", latest_message)
     ])
 
@@ -240,16 +236,14 @@ async def get_sports_info(state: ChatState) -> dict[str, Any]:
 
     # Generate response with sports data
     response_prompt = ChatPromptTemplate.from_messages([
-        ("system", """
-        You are a helpful sports information assistant.
-        Provide a concise, informative response based on the sports data provided.
+        ("system", """You are a helpful sports information assistant.
+Provide a concise, informative response based on the sports data provided.
 
-        Format your response in a readable way with the key information highlighted.
-        If multiple fixtures/matches are available, focus on the most relevant ones.
+Format your response in a readable way with the key information highlighted.
+If multiple fixtures/matches are available, focus on the most relevant ones.
 
-        Don't mention that you're using API data; just present the information as facts.
-        """),
-        ("human", f"User query: {latest_message}\n\nSports data: {json.dumps(sports_data)}"),
+Don't mention that you're using API data; just present the information as facts."""),
+        ("human", "User query: " + latest_message + "\n\nSports data: " + json.dumps(sports_data).replace("{", "{{").replace("}", "}}")),
     ])
 
     response_chain = response_prompt | llm
@@ -277,23 +271,21 @@ async def create_market(state: ChatState) -> dict[str, Any]:
 
     # Extract market details with LLM
     market_prompt = ChatPromptTemplate.from_messages([
-        ("system", """
-        Extract market creation details from the user's message.
+        ("system", """Extract market creation details from the user's message.
 
-        For sports markets, identify:
-        1. Teams involved
-        2. Event/match date
-        3. Betting amount
-        4. Type of prediction (who will win, etc.)
+For sports markets, identify:
+1. Teams involved
+2. Event/match date
+3. Betting amount
+4. Type of prediction (who will win, etc.)
 
-        Format your response as JSON:
-        {
-            "teams": ["Team A", "Team B"],
-            "event_date": "YYYY-MM-DD" or "this Sunday" or null if not specified,
-            "bet_amount": number (in SOL),
-            "prediction_type": "match_winner" or other relevant type
-        }
-        """),
+Format your response as JSON:
+{{
+    "teams": ["Team A", "Team B"],
+    "event_date": "YYYY-MM-DD" or "this Sunday" or null if not specified,
+    "bet_amount": number (in SOL),
+    "prediction_type": "match_winner" or other relevant type
+}}"""),
         ("human", latest_message)
     ])
 
@@ -365,7 +357,8 @@ async def create_market(state: ChatState) -> dict[str, Any]:
 
     # Generate market details
     market_id = str(uuid.uuid4())
-    bet_amount = float(market_info.get("bet_amount", 1.0))
+    bet_amount_value = market_info.get("bet_amount", 1.0)
+    bet_amount = float(bet_amount_value) if bet_amount_value is not None else 1.0
 
     if target_fixture:
         home_team = target_fixture["teams"]["home"]["name"]
