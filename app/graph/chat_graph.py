@@ -1,4 +1,3 @@
-import uuid
 from datetime import datetime
 from operator import add
 from typing import Annotated, Any
@@ -12,7 +11,6 @@ from typing_extensions import TypedDict
 from app.config import logger, settings
 from app.db.langgraph_store import checkpointer
 from app.services.sports_service import get_fixtures, search_teams
-from app.services.user_be_service import request_market_creation
 
 
 # Message model for chat
@@ -23,7 +21,6 @@ class Message(TypedDict):
 
 # Selection model for market options
 class MarketSelection(TypedDict):
-    id: str
     name: str
     type: str
     description: str | None
@@ -35,13 +32,11 @@ class ChatState(TypedDict):
     messages: Annotated[list[Message], add]  # Using reducer to append messages
 
     # Market state
-    market_id: str | None
     title: str | None
     description: str | None
     status: str | None
     selections: list[MarketSelection]
     selected_option: str | None
-    selected_id: str | None
     bet_amount: float | None
     creator_id: str | None
 
@@ -180,11 +175,11 @@ Identify:
 3. Time period (upcoming matches, past results, etc.)
 
 Format your response as JSON:
-{{
+{
     "teams": ["Team Name 1", "Team Name 2"],
     "league": "League Name",
     "time_period": "upcoming" or "past"
-}}
+}
 
 If any field is not mentioned, leave it as null or empty list []."""),
         ("human", latest_message)
@@ -243,7 +238,9 @@ Format your response in a readable way with the key information highlighted.
 If multiple fixtures/matches are available, focus on the most relevant ones.
 
 Don't mention that you're using API data; just present the information as facts."""),
-        ("human", "User query: " + latest_message + "\n\nSports data: " + json.dumps(sports_data).replace("{", "{{").replace("}", "}}")),
+        ("human",
+         "User query: " + latest_message + "\n\nSports data: " + json.dumps(sports_data).replace("{", "{{").replace("}",
+                                                                                                                    "}}")),
     ])
 
     response_chain = response_prompt | llm
@@ -280,12 +277,12 @@ For sports markets, identify:
 4. Type of prediction (who will win, etc.)
 
 Format your response as JSON:
-{{
+{
     "teams": ["Team A", "Team B"],
     "event_date": "YYYY-MM-DD" or "this Sunday" or null if not specified,
     "bet_amount": number (in SOL),
     "prediction_type": "match_winner" or other relevant type
-}}"""),
+}"""),
         ("human", latest_message)
     ])
 
@@ -356,7 +353,6 @@ Format your response as JSON:
             target_fixture = fixtures[0]
 
     # Generate market details
-    market_id = str(uuid.uuid4())
     bet_amount_value = market_info.get("bet_amount", 1.0)
     bet_amount = float(bet_amount_value) if bet_amount_value is not None else 1.0
 
@@ -364,65 +360,131 @@ Format your response as JSON:
         home_team = target_fixture["teams"]["home"]["name"]
         away_team = target_fixture["teams"]["away"]["name"]
         match_date = target_fixture["fixture"]["date"]
+        fixture_id = target_fixture["fixture"]["id"]
 
         title = f"{home_team} vs {away_team} Match Prediction"
         description = f"Prediction market for the match between {home_team} and {away_team} on {match_date}"
 
         # Create selections based on home team
-        selection_win_id = str(uuid.uuid4())
-        selection_draw_lose_id = str(uuid.uuid4())
-
         selections = [
             {
-                "id": selection_win_id,
                 "name": f"{home_team} Win",
                 "type": "win",
                 "description": f"{home_team} will win the match"
             },
             {
-                "id": selection_draw_lose_id,
                 "name": f"{home_team} Draw/Lose",
                 "type": "draw_lose",
                 "description": f"{home_team} will draw or lose the match"
             }
         ]
 
-        # Create market data to request from USER BE
-        event_details = {
-            "fixture_id": target_fixture["fixture"]["id"],
-            "home_team": home_team,
-            "away_team": away_team,
-            "match_date": match_date,
-            "league": target_fixture["league"]["name"],
-            "country": target_fixture["league"]["country"]
+        # Create market data structure
+        market_data = {
+            "creator_id": user_id,
+            "title": title,
+            "description": description,
+            "type": "binary",
+            "category": "sports",
+            "amount": bet_amount,
+            "currency": "SOL",
+            "close_date": match_date,
+            "created_at": datetime.now().isoformat()
+        }
+
+        # Create selections data
+        selections_data = selections
+
+        # Create event details
+        event_data = {
+            "type": "football_match",
+            "fixture_id": fixture_id,
+            "home_team": {
+                "id": target_fixture["teams"]["home"]["id"],
+                "name": home_team
+            },
+            "away_team": {
+                "id": target_fixture["teams"]["away"]["id"],
+                "name": away_team
+            },
+            "league": {
+                "id": target_fixture["league"]["id"],
+                "name": target_fixture["league"]["name"],
+                "country": target_fixture["league"]["country"]
+            },
+            "start_time": match_date,
+            "venue": {
+                "name": target_fixture["fixture"].get("venue", {}).get("name", ""),
+                "city": target_fixture["fixture"].get("venue", {}).get("city", "")
+            }
         }
     else:
         # Generic fallback
         title = "Sports Prediction Market"
         description = "Prediction market for an upcoming sports event"
 
-        selection_win_id = str(uuid.uuid4())
-        selection_draw_lose_id = str(uuid.uuid4())
-
         team_names = market_info.get("teams", ["Team A", "Team B"])
         team_a = team_names[0] if len(team_names) > 0 else "Team A"
 
         selections = [
             {
-                "id": selection_win_id,
                 "name": f"{team_a} Win",
                 "type": "win",
                 "description": f"{team_a} will win"
             },
             {
-                "id": selection_draw_lose_id,
                 "name": f"{team_a} Draw/Lose",
                 "type": "draw_lose",
                 "description": f"{team_a} will draw or lose"
             }
         ]
 
-        event_details = {}
+        # Create market data structure
+        market_data = {
+            "creator_id": user_id,
+            "title": title,
+            "description": description,
+            "type": "binary",
+            "category": "sports",
+            "amount": bet_amount,
+            "currency": "SOL",
+            "close_date": datetime.now().isoformat(),
+            "created_at": datetime.now().isoformat()
+        }
+
+        # Create selections data
+        selections_data = selections
+
+        # Create event details
+        event_data = {
+            "type": "football_match",
+            "fixture_id": 0,
+            "home_team": {
+                "id": 0,
+                "name": team_a
+            },
+            "away_team": {
+                "id": 0,
+                "name": team_names[1] if len(team_names) > 1 else "Team B"
+            },
+            "league": {
+                "id": 0,
+                "name": "Unknown League",
+                "country": "Unknown"
+            },
+            "start_time": datetime.now().isoformat(),
+            "venue": {
+                "name": "Unknown Venue",
+                "city": "Unknown City"
+            }
+        }
+
+    # Prepare the full market info package for USER BE
+    market_package = {
+        "market": market_data,
+        "selections": selections_data,
+        "event": event_data
+    }
 
     # Create response message
     response_message = {
@@ -432,16 +494,15 @@ Format your response as JSON:
 
     return {
         "messages": [response_message],
-        "market_id": market_id,
         "title": title,
         "description": description,
         "status": "draft",
         "selections": selections,
         "bet_amount": bet_amount,
-        "current_node": "wait_for_selection",
+        "current_node": "market_options",
         "context": {
             "user_id": user_id,
-            "event_details": event_details
+            "market_package": market_package
         }
     }
 
@@ -449,34 +510,21 @@ Format your response as JSON:
 async def process_selection(state: ChatState) -> dict[str, Any]:
     """
     Process a user's selection of a market option.
+    Only creates a response for betting amount request.
     """
-    selected_id = state.get("selected_id")
-
-    if not selected_id:
-        return {
-            "messages": [{
-                "role": "assistant",
-                "content": "I couldn't understand your selection. Please try again."
-            }],
-            "current_node": "wait_for_selection"
-        }
-
-    selections = state.get("selections", [])
+    selected_option = state.get("selected_option")
     bet_amount = state.get("bet_amount", 1.0)
-
-    # Find the selected option
-    selected_option = next((s["name"] for s in selections if s["id"] == selected_id), None)
 
     if not selected_option:
         return {
             "messages": [{
                 "role": "assistant",
-                "content": "Invalid selection. Please select a valid option."
+                "content": "I couldn't understand your selection. Please try again."
             }],
-            "current_node": "wait_for_selection"
+            "current_node": "market_options"
         }
 
-    # Create confirmation message
+    # Create betting amount request message
     response_message = {
         "role": "assistant",
         "content": f"You've selected {selected_option} and the wager is {bet_amount} SOL. Proceed?"
@@ -484,62 +532,6 @@ async def process_selection(state: ChatState) -> dict[str, Any]:
 
     return {
         "messages": [response_message],
-        "selected_option": selected_option,
-        "current_node": "wait_for_confirmation"
-    }
-
-
-async def process_confirmation(state: ChatState) -> dict[str, Any]:
-    """
-    Process a user's confirmation to create a market.
-    """
-    context = state.get("context", {})
-    confirmed = context.get("confirmed", False)
-
-    market_id = state.get("market_id")
-    title = state.get("title")
-    creator_id = state.get("creator_id")
-    selections = state.get("selections", [])
-    selected_id = state.get("selected_id")
-    bet_amount = state.get("bet_amount", 1.0)
-    description = state.get("description", "")
-    event_details = context.get("event_details", {})
-
-    if not confirmed:
-        # User cancelled
-        return {
-            "messages": [{
-                "role": "assistant",
-                "content": "Market creation cancelled."
-            }],
-            "status": "cancelled",
-            "current_node": "end"
-        }
-
-    # User confirmed, request market creation from USER BE
-    market_data = {
-        "id": market_id,
-        "creator_id": creator_id,
-        "title": title,
-        "description": description,
-        "selections": selections,
-        "bet_amount": bet_amount,
-        "selected_id": selected_id,
-        "event_details": event_details,
-        "created_at": datetime.now().isoformat()
-    }
-
-    # Request market creation from USER BE
-    market_response = await request_market_creation(market_data)
-
-    response_message = {
-        "role": "assistant",
-        "content": "Market is open and this participation link to share"
-    }
-
-    return {
-        "messages": [response_message],
-        "status": "open",
         "current_node": "end"
     }
 
@@ -552,10 +544,8 @@ def router(state: ChatState) -> str:
         return "create_market"
     elif current_node == "sports_info":
         return "sports_info"
-    elif current_node == "wait_for_selection":
-        return "wait_for_selection"
-    elif current_node == "wait_for_confirmation":
-        return "wait_for_confirmation"
+    elif current_node == "market_options":
+        return "market_options"
     else:
         return "end"
 
@@ -568,8 +558,7 @@ def create_chat_graph() -> StateGraph:
     workflow.add_node("process_message", process_message)
     workflow.add_node("create_market", create_market)
     workflow.add_node("sports_info", get_sports_info)
-    workflow.add_node("wait_for_selection", process_selection)
-    workflow.add_node("wait_for_confirmation", process_confirmation)
+    workflow.add_node("market_options", process_selection)
 
     # Add edges
     workflow.add_edge(START, "process_message")
@@ -579,8 +568,7 @@ def create_chat_graph() -> StateGraph:
         {
             "create_market": "create_market",
             "sports_info": "sports_info",
-            "wait_for_selection": "wait_for_selection",
-            "wait_for_confirmation": "wait_for_confirmation",
+            "market_options": "market_options",
             "end": END
         }
     )
@@ -588,7 +576,7 @@ def create_chat_graph() -> StateGraph:
         "create_market",
         router,
         {
-            "wait_for_selection": "wait_for_selection",
+            "market_options": "market_options",
             "end": END
         }
     )
@@ -600,19 +588,10 @@ def create_chat_graph() -> StateGraph:
         }
     )
     workflow.add_conditional_edges(
-        "wait_for_selection",
+        "market_options",
         router,
         {
-            "wait_for_selection": "wait_for_selection",
-            "wait_for_confirmation": "wait_for_confirmation",
-            "end": END
-        }
-    )
-    workflow.add_conditional_edges(
-        "wait_for_confirmation",
-        router,
-        {
-            "wait_for_confirmation": "wait_for_confirmation",
+            "market_options": "market_options",
             "end": END
         }
     )

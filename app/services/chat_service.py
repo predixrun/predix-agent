@@ -37,20 +37,17 @@ async def process_chat_message(
     # Create initial state or get existing state
     try:
         # Try to get existing state
-        config = {"configurable": {"thread_id": conversation_id}}
         current_state = langgraph_store.get_conversation_state(conversation_id)
 
         # If we have no state or empty state, initialize it
         if not current_state:
             current_state = {
                 "messages": [],
-                "market_id": None,
                 "title": None,
                 "description": None,
                 "status": None,
                 "selections": [],
                 "selected_option": None,
-                "selected_id": None,
                 "bet_amount": None,
                 "creator_id": user_id,
                 "sports_data": None,
@@ -62,13 +59,11 @@ async def process_chat_message(
         # Initialize new state if error
         current_state = {
             "messages": [],
-            "market_id": None,
             "title": None,
             "description": None,
             "status": None,
             "selections": [],
             "selected_option": None,
-            "selected_id": None,
             "bet_amount": None,
             "creator_id": user_id,
             "sports_data": None,
@@ -79,64 +74,73 @@ async def process_chat_message(
     # Add user message to conversation
     user_message = {"role": "user", "content": message}
 
-    # Update messages with new user message
-    if "messages" in current_state:
-        messages = current_state["messages"] + [user_message]
+    # Check if message is a selection
+    if message.startswith("SELECTION:"):
+        try:
+            # Format: SELECTION:option_name
+            selected_option = message[10:].strip()
+            current_state["selected_option"] = selected_option
+            # Skip adding this technical message to the conversation history
+        except Exception as e:
+            logger.error(f"Error processing selection: {e}")
+            # Add as normal message if parsing fails
+            if "messages" in current_state:
+                messages = current_state["messages"] + [user_message]
+            else:
+                messages = [user_message]
+            current_state["messages"] = messages
+    elif message.startswith("BET_AMOUNT:"):
+        try:
+            # Format: BET_AMOUNT:1.5
+            bet_amount = float(message[11:].strip())
+            current_state["bet_amount"] = bet_amount
+            # Skip adding this technical message to the conversation history
+        except Exception as e:
+            logger.error(f"Error processing bet amount: {e}")
+            # Add as normal message if parsing fails
+            if "messages" in current_state:
+                messages = current_state["messages"] + [user_message]
+            else:
+                messages = [user_message]
+            current_state["messages"] = messages
     else:
-        messages = [user_message]
-
-    # Update the state with the new message
-    input_state = {**current_state, "messages": messages}
+        # Add as normal message
+        if "messages" in current_state:
+            current_state["messages"] = current_state["messages"] + [user_message]
+        else:
+            current_state["messages"] = [user_message]
 
     # Run the graph
     config = {"configurable": {"thread_id": conversation_id}}
 
     try:
-        result = await graph.ainvoke(input_state, config)
+        result = await graph.ainvoke(current_state, config)
 
         # Get the last assistant message
         assistant_messages = [msg for msg in result.get("messages", [])
-                              if msg["role"] == "assistant"]
+                            if msg["role"] == "assistant"]
 
         if assistant_messages:
             latest_message = assistant_messages[-1]["content"]
         else:
             latest_message = "I didn't get a response. Please try again."
 
-        # Determine message type based on current node
+        # Determine message type based on current node and context
         current_node = result.get("current_node", "end")
-        market_id = result.get("market_id")
         sports_data = result.get("sports_data")
+        context = result.get("context", {})
+        market_package = context.get("market_package", {})
 
-        if current_node == "wait_for_selection" and market_id:
+        if current_node == "market_options" and market_package:
             # Return market options
             message_type = "market_options"
+            data = market_package
+        elif message.startswith("SELECTION:") and result.get("selected_option"):
+            # Return betting amount request
+            message_type = "betting_amount_request"
             data = {
-                "market_id": market_id,
-                "title": result.get("title", "Prediction Market"),
-                "options": result.get("selections", []),
-                "bet_amount": result.get("bet_amount", 1.0)
-            }
-        elif current_node == "wait_for_confirmation":
-            # Return confirmation options
-            message_type = "confirmation_options"
-            data = {
-                "market_id": result.get("market_id"),
-                "selection": result.get("selected_option"),
-                "amount": result.get("bet_amount", 1.0),
-                "options": [
-                    {"id": "yes", "name": "Yes"},
-                    {"id": "no", "name": "No"}
-                ]
-            }
-        elif result.get("status") == "open":
-            # Market has been finalized
-            message_type = "market_finalized"
-            data = {
-                "market_id": result.get("market_id"),
-                "share_url": f"http://predix/market/{result.get('market_id')}",
-                "title": result.get("title"),
-                "status": "open"
+                "selected_option": result.get("selected_option"),
+                "initial_amount": result.get("bet_amount", 1.0)
             }
         elif sports_data:
             # Sports search result
@@ -159,180 +163,5 @@ async def process_chat_message(
         return ChatResponse(
             conversation_id=conversation_id,
             message="Sorry, I encountered an error processing your request.",
-            message_type="error"
-        )
-
-
-async def process_selection(
-        user_id: str,
-        market_id: str,
-        selection_id: str,
-        amount: float,
-        conversation_id: str
-) -> ChatResponse:
-    """
-    Process a user's selection using LangGraph.
-
-    Args:
-        user_id: ID of the user
-        market_id: ID of the market
-        selection_id: ID of the selected option
-        amount: Bet amount
-        conversation_id: ID of the conversation
-
-    Returns:
-        ChatResponse with confirmation options
-    """
-    # Get current state
-    current_state = langgraph_store.get_conversation_state(conversation_id)
-
-    if not current_state:
-        logger.error(f"Conversation not found: {conversation_id}")
-        return ChatResponse(
-            conversation_id=conversation_id,
-            message="Sorry, I couldn't find that conversation.",
-            message_type="error"
-        )
-
-    # Update state with selection
-    updates = {
-        "selected_id": selection_id,
-        "bet_amount": amount
-    }
-
-    # Update the state
-    updated_state = langgraph_store.update_conversation_state(
-        conversation_id,
-        updates,
-        as_node="wait_for_selection"
-    )
-
-    # Run the graph to process selection
-    graph = get_compiled_graph()
-    config = {"configurable": {"thread_id": conversation_id}}
-
-    try:
-        result = await graph.ainvoke(updated_state, config)
-
-        # Get the last assistant message
-        assistant_messages = [msg for msg in result.get("messages", [])
-                              if msg["role"] == "assistant"]
-
-        if assistant_messages:
-            latest_message = assistant_messages[-1]["content"]
-        else:
-            latest_message = "I didn't get a response. Please try again."
-
-        # Return confirmation options
-        return ChatResponse(
-            conversation_id=conversation_id,
-            message=latest_message,
-            message_type="confirmation_options",
-            data={
-                "market_id": market_id,
-                "selection": result.get("selected_option"),
-                "amount": amount,
-                "options": [
-                    {"id": "yes", "name": "Yes"},
-                    {"id": "no", "name": "No"}
-                ]
-            }
-        )
-
-    except Exception as e:
-        logger.error(f"Error processing selection: {e}")
-        return ChatResponse(
-            conversation_id=conversation_id,
-            message="Sorry, I encountered an error processing your selection.",
-            message_type="error"
-        )
-
-
-async def process_confirmation(
-        user_id: str,
-        market_id: str,
-        confirmed: bool,
-        conversation_id: str
-) -> ChatResponse:
-    """
-    Process a user's confirmation using LangGraph.
-
-    Args:
-        user_id: ID of the user
-        market_id: ID of the market
-        confirmed: True if confirmed, False otherwise
-        conversation_id: ID of the conversation
-
-    Returns:
-        ChatResponse with market finalization details
-    """
-    # Get current state
-    current_state = langgraph_store.get_conversation_state(conversation_id)
-
-    if not current_state:
-        logger.error(f"Conversation not found: {conversation_id}")
-        return ChatResponse(
-            conversation_id=conversation_id,
-            message="Sorry, I couldn't find that conversation.",
-            message_type="error"
-        )
-
-    # Update state with confirmation
-    updates = {
-        "context": {
-            **current_state.get("context", {}),
-            "confirmed": confirmed
-        }
-    }
-
-    # Update the state
-    updated_state = langgraph_store.update_conversation_state(
-        conversation_id,
-        updates,
-        as_node="wait_for_confirmation"
-    )
-
-    # Run the graph to process confirmation
-    graph = get_compiled_graph()
-    config = {"configurable": {"thread_id": conversation_id}}
-
-    try:
-        result = await graph.ainvoke(updated_state, config)
-
-        # Get the last assistant message
-        assistant_messages = [msg for msg in result.get("messages", [])
-                              if msg["role"] == "assistant"]
-
-        if assistant_messages:
-            latest_message = assistant_messages[-1]["content"]
-        else:
-            latest_message = "I didn't get a response. Please try again."
-
-        if confirmed and result.get("status") == "open":
-            # Market has been finalized
-            return ChatResponse(
-                conversation_id=conversation_id,
-                message=latest_message,
-                message_type="market_finalized",
-                data={
-                    "market_id": market_id,
-                    "share_url": f"http://predix/market/{market_id}",
-                    "title": result.get("title"),
-                    "status": "open"
-                }
-            )
-        else:
-            # Market creation cancelled
-            return ChatResponse(
-                conversation_id=conversation_id,
-                message=latest_message,
-                message_type="text"
-            )
-
-    except Exception as e:
-        logger.error(f"Error processing confirmation: {e}")
-        return ChatResponse(
-            conversation_id=conversation_id,
-            message="Sorry, I encountered an error processing your confirmation.",
             message_type="error"
         )

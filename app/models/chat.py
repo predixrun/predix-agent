@@ -1,8 +1,19 @@
 import uuid
 from datetime import datetime
+from enum import Enum
 from typing import Any
 
 from pydantic import BaseModel, Field
+
+
+class MessageType(str, Enum):
+    """Enum for message types in chat responses"""
+    TEXT = "text"
+    SPORTS_SEARCH = "sports_search"
+    MARKET_OPTIONS = "market_options"
+    BETTING_AMOUNT_REQUEST = "betting_amount_request"
+    MARKET_FINALIZED = "market_finalized"
+    ERROR = "error"
 
 
 class ChatRequest(BaseModel):
@@ -14,7 +25,7 @@ class ChatRequest(BaseModel):
 class ChatResponse(BaseModel):
     conversation_id: str
     message: str
-    message_type: str = "text"  # "text", "sport_search", "market_options", "confirmation_options", "market_finalized"
+    message_type: MessageType = MessageType.TEXT
     data: dict[str, Any] | None = None
 
 
