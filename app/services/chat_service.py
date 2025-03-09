@@ -1,25 +1,23 @@
 import uuid
 
 from app.config import logger
-from app.db import langgraph_store
-from app.graph.chat_graph import get_compiled_graph
-from app.models.chat import ChatResponse
+from app.models.chat import ChatResponse, MessageType
+from app.services.memory_service import add_ai_message, add_user_message, get_memory
+from app.tools.agent import process_agent_message
 
 
 async def process_chat_message(
-        user_id: str,
-        message: str,
-        conversation_id: str | None = None,
-        wallet_address: str | None = None
+    user_id: str,
+    message: str,
+    conversation_id: str | None = None
 ) -> ChatResponse:
     """
-    Process a chat message from a user using LangGraph.
+    Process a chat message from a user.
 
     Args:
         user_id: ID of the user
         message: The message content
         conversation_id: Optional ID of the conversation
-        wallet_address: Optional wallet address of the user
 
     Returns:
         ChatResponse object with appropriate response
@@ -31,124 +29,80 @@ async def process_chat_message(
     # Log the incoming message
     logger.info(f"Received message from user {user_id} in conversation {conversation_id}")
 
-    # Get the compiled graph
-    graph = get_compiled_graph()
+    # Get memory for this conversation
+    memory = get_memory(conversation_id)
 
-    # Create initial state or get existing state
-    try:
-        # Try to get existing state
-        current_state = langgraph_store.get_conversation_state(conversation_id)
+    # Check if message is a selection or bet amount
+    selected_option = None
+    bet_amount = None
+    original_message = message
 
-        # If we have no state or empty state, initialize it
-        if not current_state:
-            current_state = {
-                "messages": [],
-                "title": None,
-                "description": None,
-                "status": None,
-                "selections": [],
-                "selected_option": None,
-                "bet_amount": None,
-                "creator_id": user_id,
-                "sports_data": None,
-                "current_node": None,
-                "context": {"user_id": user_id, "wallet_address": wallet_address}
-            }
-    except Exception as e:
-        logger.error(f"Error getting state: {e}")
-        # Initialize new state if error
-        current_state = {
-            "messages": [],
-            "title": None,
-            "description": None,
-            "status": None,
-            "selections": [],
-            "selected_option": None,
-            "bet_amount": None,
-            "creator_id": user_id,
-            "sports_data": None,
-            "current_node": None,
-            "context": {"user_id": user_id, "wallet_address": wallet_address}
-        }
-
-    # Add user message to conversation
-    user_message = {"role": "user", "content": message}
-
-    # Check if message is a selection
     if message.startswith("SELECTION:"):
         try:
             # Format: SELECTION:option_name
             selected_option = message[10:].strip()
-            current_state["selected_option"] = selected_option
-            # Skip adding this technical message to the conversation history
+            # Don't add selection commands to memory
+            message = f"I select the option: {selected_option}"
         except Exception as e:
             logger.error(f"Error processing selection: {e}")
-            # Add as normal message if parsing fails
-            if "messages" in current_state:
-                messages = current_state["messages"] + [user_message]
-            else:
-                messages = [user_message]
-            current_state["messages"] = messages
     elif message.startswith("BET_AMOUNT:"):
         try:
             # Format: BET_AMOUNT:1.5
             bet_amount = float(message[11:].strip())
-            current_state["bet_amount"] = bet_amount
-            # Skip adding this technical message to the conversation history
+            # Don't add bet amount commands to memory
+            message = f"I want to bet {bet_amount} SOL"
         except Exception as e:
             logger.error(f"Error processing bet amount: {e}")
-            # Add as normal message if parsing fails
-            if "messages" in current_state:
-                messages = current_state["messages"] + [user_message]
-            else:
-                messages = [user_message]
-            current_state["messages"] = messages
-    else:
-        # Add as normal message
-        if "messages" in current_state:
-            current_state["messages"] = current_state["messages"] + [user_message]
-        else:
-            current_state["messages"] = [user_message]
 
-    # Run the graph
-    config = {"configurable": {"thread_id": conversation_id}}
+    # Add user message to memory
+    add_user_message(conversation_id, message)
 
     try:
-        result = await graph.ainvoke(current_state, config)
+        # Process the message through the agent
+        result = await process_agent_message(
+            message=message,
+            user_id=user_id,
+            conversation_id=conversation_id,
+            memory=memory,
+            selected_option=selected_option,
+            bet_amount=bet_amount
+        )
 
-        # Get the last assistant message
-        assistant_messages = [msg for msg in result.get("messages", [])
-                            if msg["role"] == "assistant"]
+        # Get the assistant message from the result
+        assistant_messages = result.get("messages", [])
 
         if assistant_messages:
-            latest_message = assistant_messages[-1]["content"]
+            latest_message = assistant_messages[0].content
+            # The process_agent_message function already adds AI messages to memory
         else:
             latest_message = "I didn't get a response. Please try again."
+            # Add to conversation memory
+            add_ai_message(conversation_id, latest_message)
 
-        # Determine message type based on current node and context
-        current_node = result.get("current_node", "end")
-        sports_data = result.get("sports_data")
+        # Determine message type based on intent and context
+        intent = result.get("intent", "GENERAL_CHAT")
         context = result.get("context", {})
         market_package = context.get("market_package", {})
+        sports_data = result.get("sports_data")
 
-        if current_node == "market_options" and market_package:
+        if intent == "MARKET_CREATION" and market_package:
             # Return market options
-            message_type = "market_options"
+            message_type = MessageType.MARKET_OPTIONS
             data = market_package
-        elif message.startswith("SELECTION:") and result.get("selected_option"):
+        elif selected_option:
             # Return betting amount request
-            message_type = "betting_amount_request"
+            message_type = MessageType.BETTING_AMOUNT_REQUEST
             data = {
-                "selected_option": result.get("selected_option"),
-                "initial_amount": result.get("bet_amount", 1.0)
+                "selected_option": selected_option,
+                "initial_amount": bet_amount or result.get("bet_amount", 1.0)
             }
         elif sports_data:
             # Sports search result
-            message_type = "sports_search"
+            message_type = MessageType.SPORTS_SEARCH
             data = sports_data
         else:
             # Regular text message
-            message_type = "text"
+            message_type = MessageType.TEXT
             data = None
 
         return ChatResponse(
@@ -160,8 +114,13 @@ async def process_chat_message(
 
     except Exception as e:
         logger.error(f"Error processing message: {e}")
+
+        # Add error message to memory
+        error_message = "Sorry, I encountered an error processing your request."
+        add_ai_message(conversation_id, error_message)
+
         return ChatResponse(
             conversation_id=conversation_id,
-            message="Sorry, I encountered an error processing your request.",
-            message_type="error"
+            message=error_message,
+            message_type=MessageType.ERROR
         )
