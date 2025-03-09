@@ -21,7 +21,7 @@ For sports questions, provide information about teams, matches, and events.
 """
 
 
-def respond_to_general_chat(
+async def respond_to_general_chat(
         messages: list[Message],
 ) -> dict[str, Any]:
     """
@@ -50,7 +50,7 @@ def respond_to_general_chat(
 
     # Generate response
     try:
-        response = llm.invoke(lc_messages)
+        response = await llm.ainvoke(lc_messages)
         return {
             "messages": [
                 Message(role="assistant", content=response.content)
@@ -129,5 +129,6 @@ intent_detection_tool = StructuredTool.from_function(
 general_chat_tool = StructuredTool.from_function(
     func=respond_to_general_chat,
     name="respond_to_general_chat",
-    description="Respond to general chat messages"
+    description="Respond to general chat messages",
+    coroutine=respond_to_general_chat
 )

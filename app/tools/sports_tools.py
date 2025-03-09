@@ -51,7 +51,7 @@ If any field is not mentioned, leave it as null or empty list []."""),
     ]
 
     try:
-        query_result = llm.invoke(query_prompt)
+        query_result = await llm.ainvoke(query_prompt)
         query_content = query_result.content
 
         # Extract JSON from response
@@ -137,7 +137,7 @@ Don't mention that you're using API data; just present the information as facts.
             {"role": "user", "content": f"User query: {message}\n\nSports data: {json.dumps(sports_data)}"}
         ]
 
-        response = llm.invoke(response_prompt)
+        response = await llm.ainvoke(response_prompt)
 
         from app.models.chat import Message
         return {
@@ -162,5 +162,6 @@ Don't mention that you're using API data; just present the information as facts.
 sports_info_tool = StructuredTool.from_function(
     func=get_sports_information,
     name="get_sports_information",
-    description="Get sports information based on a user message"
+    description="Get sports information based on a user message",
+    coroutine=get_sports_information
 )

@@ -65,7 +65,7 @@ Format your response as JSON:
     ]
 
     try:
-        market_result = llm.invoke(market_prompt)
+        market_result = await llm.ainvoke(market_prompt)
         market_content = market_result.content
 
         # Extract JSON from response
@@ -349,11 +349,13 @@ async def process_market_selection(
 create_market_tool = StructuredTool.from_function(
     func=create_prediction_market,
     name="create_prediction_market",
-    description="Create a prediction market based on a user message"
+    description="Create a prediction market based on a user message",
+    coroutine=create_prediction_market
 )
 
 process_selection_tool = StructuredTool.from_function(
     func=process_market_selection,
     name="process_market_selection",
-    description="Process a user's selection of a market option"
+    description="Process a user's selection of a market option",
+    coroutine=process_market_selection
 )
