@@ -9,12 +9,12 @@ from pydantic import BaseModel, Field
 
 class MessageType(str, Enum):
     """Enum for message types in chat responses"""
-    TEXT = "text"
-    SPORTS_SEARCH = "sports_search"
-    MARKET_OPTIONS = "market_options"
-    BETTING_AMOUNT_REQUEST = "betting_amount_request"
-    MARKET_FINALIZED = "market_finalized"
-    ERROR = "error"
+    TEXT = "TEXT"
+    SPORTS_SEARCH = "SPORTS_SEARCH"
+    MARKET_OPTIONS = "MARKET_OPTIONS"
+    BETTING_AMOUNT_REQUEST = "BETTING_AMOUNT_REQUEST"
+    MARKET_FINALIZED = "MARKET_FINALIZED"
+    ERROR = "ERROR"
 
 
 class ChatRequest(BaseModel):
