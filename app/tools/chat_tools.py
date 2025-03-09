@@ -65,7 +65,7 @@ def respond_to_general_chat(
         }
 
 
-def detect_intent(
+async def detect_intent(
         message: str,
 ) -> str:
     """
@@ -102,7 +102,7 @@ Just respond with the category name, nothing else."""),
     ]
 
     try:
-        intent_result = llm.invoke(intent_prompt)
+        intent_result = await llm.ainvoke(intent_prompt)
         intent = intent_result.content.strip().upper()
         logger.info(f"Detected intent: {intent}")
 
@@ -122,7 +122,8 @@ Just respond with the category name, nothing else."""),
 intent_detection_tool = StructuredTool.from_function(
     func=detect_intent,
     name="detect_intent",
-    description="Detect the intent of a user message"
+    description="Detect the intent of a user message",
+    coroutine=detect_intent
 )
 
 general_chat_tool = StructuredTool.from_function(
