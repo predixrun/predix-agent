@@ -41,8 +41,8 @@ def initialize_agent(memory: ConversationBufferMemory | None = None):
     """
 
     llm = ChatOpenAI(
-        model="chatgpt-4o-latest",
-        temperature=0.2,
+        model="gpt-4o-2024-11-20",
+        temperature=0.1,
         api_key=settings.OPENAI_API_KEY
     )
 
