@@ -2,9 +2,7 @@ from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
-from app.db import langgraph_store
 from app.dependecies import verify_api_key
-from app.graph.chat_graph import get_compiled_graph
 from app.models.chat import ChatRequest, ChatResponse
 from app.services.chat_service import process_chat_message
 
@@ -34,9 +32,11 @@ async def get_conversation(
     """
     Get all messages in a conversation.
     """
-    state = langgraph_store.get_conversation_state(conversation_id)
+    from app.services.memory_service import get_formatted_messages
 
-    if not state or "messages" not in state:
+    messages = get_formatted_messages(conversation_id)
+
+    if not messages:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
             detail="Conversation not found"
@@ -44,41 +44,19 @@ async def get_conversation(
 
     return {
         "conversation_id": conversation_id,
-        "messages": state.get("messages", [])
+        "messages": messages
     }
 
 
 @router.get("/conversations", response_model=list[str])
-async def list_conversations(
+async def list_all_conversations(
         api_key: str = Depends(verify_api_key)
 ):
     """
     List all conversation IDs.
-    for PoC debugging.
+    For PoC debugging.
+
     """
-    graph = get_compiled_graph()
+    from app.services.memory_service import list_conversations
 
-    # Get all threads from the checkpointer
-    threads = graph.checkpointer.list_threads()
-
-    return list(threads)
-
-
-@router.get("/conversation_history/{conversation_id}", response_model=list[dict[str, Any]])
-async def get_conversation_history(
-        conversation_id: str,
-        api_key: str = Depends(verify_api_key)
-):
-    """
-    Get the history of state changes for a conversation.
-    for PoC debugging.
-    """
-    history = langgraph_store.get_conversation_history(conversation_id)
-
-    if not history:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="Conversation history not found"
-        )
-
-    return history
+    return list_conversations()

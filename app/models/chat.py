@@ -3,6 +3,7 @@ from datetime import datetime
 from enum import Enum
 from typing import Any
 
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
 from pydantic import BaseModel, Field
 
 
@@ -33,6 +34,32 @@ class Message(BaseModel):
     role: str
     content: str
     timestamp: datetime = Field(default_factory=datetime.now)
+
+    def to_langchain_message(self) -> BaseMessage:
+        """Convert to LangChain message format"""
+        if self.role == "user":
+            return HumanMessage(content=self.content)
+        elif self.role == "assistant":
+            return AIMessage(content=self.content)
+        elif self.role == "system":
+            return SystemMessage(content=self.content)
+        else:
+            # Default fallback to HumanMessage
+            return HumanMessage(content=self.content)
+
+    @classmethod
+    def from_langchain_message(cls, message: BaseMessage) -> "Message":
+        """Create from LangChain message."""
+        if isinstance(message, HumanMessage):
+            role = "user"
+        elif isinstance(message, AIMessage):
+            role = "assistant"
+        elif isinstance(message, SystemMessage):
+            role = "system"
+        else:
+            role = "user"
+
+        return cls(role=role, content=message.content)
 
 
 class Conversation(BaseModel):
