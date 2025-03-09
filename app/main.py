@@ -1,27 +1,21 @@
-import asyncio
-from contextlib import asynccontextmanager
-
 from fastapi import FastAPI, HTTPException, Request
 
-from app.config import setup_logging
+from app.config import logger, setup_logging
 from app.models.response_models import TemplateJSONResponse
 from app.routers.api import api_router
+from app.tools import initialize_agent
 
 setup_logging()
-
-
-# @asynccontextmanager
-# async def lifespan(app: FastAPI):
-#     yield
 
 
 def create_app() -> FastAPI:
     app = FastAPI(
         title="PrediX Agent Server",
         version="0.1.0",
-        default_response_class=TemplateJSONResponse,
-        # lifespan=lifespan
+        default_response_class=TemplateJSONResponse
     )
+    initialize_agent()
+    logger.info("LangChain tools initialized")
 
     app.include_router(api_router)
     return app
