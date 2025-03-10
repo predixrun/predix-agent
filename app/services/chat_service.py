@@ -79,6 +79,8 @@ async def process_chat_message(
             # Add to conversation memory
             add_ai_message(conversation_id, latest_message)
 
+        latest_message.replace("*", "")
+
         # Determine message type based on intent and context
         intent = result.get("intent", "GENERAL_CHAT")
         context = result.get("context", {})
