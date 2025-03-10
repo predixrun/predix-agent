@@ -1,4 +1,3 @@
-import json
 import logging
 import os
 from datetime import datetime
@@ -25,49 +24,8 @@ class Settings(BaseSettings):
         env_file = ".env"
         env_file_encoding = "utf-8"
 
-    def print_config(self):
-        logger.info("[ENV] Current configuration:")
-        logger.info(f"ENV: {self.ENV}")
-        logger.info(f"OPENAI_API_KEY: {self.OPENAI_API_KEY[:10]}...")
-        logger.info(f"ANTHROPIC_API_KEY: {self.ANTHROPIC_API_KEY[:10]}...")
-
 
 settings = Settings()
-
-# 디버깅
-if settings.ENV == "DEV":
-    settings.print_config()
-
-
-class EmbeddingFilter(logging.Filter):
-    def filter(self, record: logging.LogRecord) -> bool:
-        # 1. 파라미터화된 로깅인 경우 args가 튜플 형태로 들어옴
-        if isinstance(record.args, tuple):
-            # args 튜플 내 entities 딕셔너리 찾기
-            new_args = []
-            for arg in record.args:
-                if isinstance(arg, dict):
-                    # embedding 필드 제거
-                    arg = {k: v for k, v in arg.items() if not k.endswith('embedding')}
-                new_args.append(arg)
-            record.args = tuple(new_args)
-
-        # 2. 딕셔너리 처리 유지
-        elif isinstance(record.args, dict):
-            filtered_args = {k: v for k, v in record.args.items() if not k.endswith('embedding')}
-            record.args = filtered_args
-
-        # 3. 문자열 처리 (이중 방어)
-        if hasattr(record, 'msg') and isinstance(record.msg, str):
-            try:
-                msg_dict = json.loads(record.msg)
-                if isinstance(msg_dict, dict):
-                    filtered_dict = {k: v for k, v in msg_dict.items() if not k.endswith('embedding')}
-                    record.msg = json.dumps(filtered_dict)
-            except json.JSONDecodeError:
-                pass
-
-        return True
 
 
 def setup_logging():
@@ -98,11 +56,6 @@ def setup_logging():
     # 콘솔 핸들러
     console_handler = logging.StreamHandler()
     console_handler.setFormatter(formatter)
-
-    # 임베딩 필터
-    embedding_filter = EmbeddingFilter()
-    file_handler.addFilter(embedding_filter)
-    console_handler.addFilter(embedding_filter)
 
     # 루트 로거
     root_logger = logging.getLogger()
