@@ -71,7 +71,7 @@ async def get_fixtures(
         List of fixtures
     """
     # Prepare parameters
-    params = {"timezone": "UTC"}  # Use UTC timezone
+    params = {"timezone": "UTC", "season": 2024}  # Use UTC timezone
 
     if fixture_id:
         logger.info(f"Getting fixture with ID: {fixture_id}")
