@@ -1,5 +1,5 @@
 from .agent import initialize_agent, process_agent_message
-from .chat_tools import detect_intent, general_chat_tool, intent_detection_tool
+from .chat_tools import general_chat_tool
 from .market_tools import create_market_tool, process_selection_tool
 from .sports_tools import sports_info_tool
 
@@ -7,10 +7,6 @@ __all__ = [
     # Agent functions
     'initialize_agent',
     'process_agent_message',
-
-    # Intent detection
-    'detect_intent',
-    'intent_detection_tool',
 
     # Chat tools
     'general_chat_tool',

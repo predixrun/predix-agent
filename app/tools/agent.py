@@ -7,25 +7,20 @@ from langchain_openai import ChatOpenAI
 
 from app.config import logger, settings
 from app.models.chat import Message
-from app.tools.chat_tools import detect_intent, general_chat_tool, intent_detection_tool
+from app.tools.chat_tools import general_chat_tool
 from app.tools.market_tools import create_market_tool, process_selection_tool
 from app.tools.sports_tools import sports_info_tool
 
 SYSTEM_PROMPT = """You are an AI assistant for the PrediX prediction market platform.
 PrediX allows users to create and participate in prediction markets for sports events.
 
-Your main tasks are:
-1. Help users create prediction markets by detecting their intent
-2. Answer questions about sports events and prediction markets
-3. Provide general assistance
+Based on the user's message, choose the appropriate tool:
+- If the user wants to create a prediction market (mentions creating a market, betting on a team, etc.), use the create_prediction_market tool
+- If the user asks about sports information (teams, matches, scores, etc.), use the get_sports_information tool
+- If the user selects a market option or provides a betting amount, use the process_market_selection tool
+- For general questions and conversations, use the respond_to_general_chat tool
 
-Based on the user's intent, you will take different actions:
-- For market creation requests, use the create_prediction_market tool
-- For sports information requests, use the get_sports_information tool
-- For option selections, use the process_market_selection tool
-- For general chat, use the respond_to_general_chat tool
-
-First, always use the detect_intent tool to determine the user's intent.
+directly select the appropriate tool based on the user's message content.
 """
 
 
@@ -48,7 +43,6 @@ def initialize_agent(memory: ConversationBufferMemory | None = None):
 
     # Define the tools
     tools = [
-        intent_detection_tool,
         general_chat_tool,
         sports_info_tool,
         create_market_tool,
@@ -107,9 +101,9 @@ async def process_agent_message(
     agent_executor = initialize_agent(memory)
 
     try:
-        # Handle special messages
+        # Handle special messages for market selections directly
         if selected_option:
-            # Process selection
+            # Process selection without going through the agent
             result = await process_selection_tool.ainvoke({
                 "selected_option": selected_option,
                 "bet_amount": bet_amount or 1.0
@@ -120,47 +114,42 @@ async def process_agent_message(
 
             return result
 
-        # Detect intent first
-        intent = await detect_intent(message)
+        # Use the agent for all other messages
+        agent_result = await agent_executor.ainvoke({"input": message})
 
-        if intent == "MARKET_CREATION":
-            # Create market
-            result = await create_market_tool.ainvoke({
-                "message": message,
-                "user_id": user_id
-            })
+        # Extract intent information from the tool used
+        intent = "GENERAL_CHAT"
+        if agent_result.get("intermediate_steps"):
+            tool_name = agent_result["intermediate_steps"][0][0].tool
+            if tool_name == "create_prediction_market":
+                intent = "MARKET_CREATION"
+            elif tool_name == "get_sports_information":
+                intent = "SPORTS_INFO"
 
-            # Add AI message to memory
-            memory.chat_memory.add_ai_message(result["messages"][0].content)
+        # Extract additional context from tool outputs
+        context = {}
+        sports_data = None
 
-            result["intent"] = "MARKET_CREATION"
-            return result
+        for step in agent_result.get("intermediate_steps", []):
+            tool_output = step[1]
+            if isinstance(tool_output, dict):
+                if "market_package" in tool_output.get("context", {}):
+                    context = tool_output.get("context", {})
+                if "sports_data" in tool_output:
+                    sports_data = tool_output.get("sports_data")
 
-        elif intent == "SPORTS_INFO":
-            # Get sports info
-            result = await sports_info_tool.ainvoke({
-                "message": message
-            })
+        result = {
+            "messages": [
+                Message(role="assistant", content=agent_result["output"])
+            ],
+            "intent": intent,
+            "context": context
+        }
 
-            # Add AI message to memory
-            memory.chat_memory.add_ai_message(result["messages"][0].content)
+        if sports_data:
+            result["sports_data"] = sports_data
 
-            result["intent"] = "SPORTS_INFO"
-            return result
-
-        else:
-            # Use the agent for general chat
-            # The memory is already included, so we can just pass the message
-            agent_result = await agent_executor.ainvoke({"input": message})
-
-            result = {
-                "messages": [
-                    Message(role="assistant", content=agent_result["output"])
-                ],
-                "intent": "GENERAL_CHAT"
-            }
-
-            return result
+        return result
 
     except Exception as e:
         logger.error(f"Error processing agent message: {e}")
