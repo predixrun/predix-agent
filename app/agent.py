@@ -2,7 +2,6 @@ import logging
 from datetime import datetime
 from typing import Any
 
-from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
 from langgraph.prebuilt import create_react_agent
 
@@ -58,22 +57,12 @@ def create_agent():
     ]
 
     # 프롬프트 생성
-    # prompt = ChatPromptTemplate.from_messages([
-    #     ("system", SYSTEM_PROMPT.format(
-    #         current_datetime=current_datetime,
-    #         current_day=current_day
-    #     ))
-    # ])
     current_datetime = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     current_day = datetime.now().strftime("%A")
     prompt = SYSTEM_PROMPT.format(
         current_datetime=current_datetime,
         current_day=current_day
     )
-
-
-    # llm에 직접 도구 바인딩 (tool_choice="auto"로 설정)
-    # llm_with_tools = llm.bind_tools(tools, tool_choice="auto")
 
     # create_react_agent 사용하여 에이전트 생성
     # 각 대화별 메모리 사용 (싱글톤 제거)
