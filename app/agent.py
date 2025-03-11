@@ -4,15 +4,10 @@ from typing import Any
 
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
-from langgraph.checkpoint.memory import MemorySaver
 from langgraph.prebuilt import create_react_agent
 
 from app.config import settings
 from app.models.chat import MessageType
-
-# 전역 에이전트 인스턴스 (싱글톤 패턴)
-_agent = None
-_memory = None
 
 # 시스템 프롬프트
 SYSTEM_PROMPT = """
@@ -41,11 +36,6 @@ def create_agent():
     """
     ReAct 에이전트 생성 (create_react_agent 사용)
     """
-    global _memory
-
-    # 현재 날짜/시간 정보
-    current_datetime = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    current_day = datetime.now().strftime("%A")
 
     # LLM 초기화
     llm = ChatOpenAI(
@@ -68,37 +58,35 @@ def create_agent():
     ]
 
     # 프롬프트 생성
-    prompt = ChatPromptTemplate.from_messages([
-        ("system", SYSTEM_PROMPT.format(
-            current_datetime=current_datetime,
-            current_day=current_day
-        ))
-    ])
+    # prompt = ChatPromptTemplate.from_messages([
+    #     ("system", SYSTEM_PROMPT.format(
+    #         current_datetime=current_datetime,
+    #         current_day=current_day
+    #     ))
+    # ])
+    current_datetime = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    current_day = datetime.now().strftime("%A")
+    prompt = SYSTEM_PROMPT.format(
+        current_datetime=current_datetime,
+        current_day=current_day
+    )
 
-    # 메모리 설정
-    _memory = MemorySaver()
+
+    # llm에 직접 도구 바인딩 (tool_choice="auto"로 설정)
+    # llm_with_tools = llm.bind_tools(tools, tool_choice="auto")
 
     # create_react_agent 사용하여 에이전트 생성
+    # 각 대화별 메모리 사용 (싱글톤 제거)
     agent = create_react_agent(
         llm,
-        tools,
+        tools=tools,
         prompt=prompt,
-        checkpointer=_memory,
-        version="v2",
+        version="v1",
         debug=True
     )
 
+    logging.info("Created new ReAct agent instance")
     return agent
-
-def get_agent():
-    """
-    싱글톤 패턴으로 에이전트 반환
-    """
-    global _agent
-    if _agent is None:
-        logging.info("Initializing ReAct agent with LangGraph")
-        _agent = create_agent()
-    return _agent
 
 def extract_tool_data(result_state: dict[str, Any]) -> tuple[MessageType, dict[str, Any] | None]:
     """
@@ -113,16 +101,29 @@ def extract_tool_data(result_state: dict[str, Any]) -> tuple[MessageType, dict[s
     message_type = MessageType.TEXT
     data = None
 
+    # 디버깅: 결과 상태 구조 확인
+    logging.debug(f"Result state keys: {result_state.keys()}")
+    if "intermediate_steps" in result_state:
+        logging.debug(f"Found intermediate_steps with {len(result_state['intermediate_steps'])} entries")
+
     # intermediate_steps가 있는지 확인 (react 에이전트에서는 이 형태로 결과 제공)
     if "intermediate_steps" in result_state:
-        for step in result_state["intermediate_steps"]:
+        for i, step in enumerate(result_state["intermediate_steps"]):
+            logging.debug(f"Step {i}: {step}")
+
             if len(step) < 2:
                 continue
 
             action = step[0]
             observation = step[1]
 
-            tool_name = getattr(action, "tool", None)
+            # 액션에서 도구 이름 추출
+            tool_name = None
+            if hasattr(action, "tool"):
+                tool_name = action.tool
+            elif isinstance(action, dict) and "name" in action:
+                tool_name = action["name"]
+
             if not tool_name:
                 continue
 
@@ -167,8 +168,8 @@ async def process_message(user_id: str, message: str, conversation_id: str, cont
     """
     from app.services.memory_service import get_memory_messages, save_message
 
-    # 에이전트 가져오기
-    agent = get_agent()
+    # 매번 새로운 에이전트 생성 (싱글톤 제거)
+    agent = create_agent()
 
     # 기존 메시지 가져오기
     messages = context or get_memory_messages(conversation_id)
@@ -181,17 +182,21 @@ async def process_message(user_id: str, message: str, conversation_id: str, cont
     save_message(conversation_id, "user", message)
 
     try:
-        # config 딕셔너리로 생성 (RunnableConfig 클래스 대신)
         config = {
             "configurable": {
                 "thread_id": conversation_id
             }
         }
 
+        logging.info(f"Invoking agent with message: {message}")
+
+        # 에이전트 실행
         result = await agent.ainvoke(
             {"messages": messages_list},
             config=config
         )
+
+        logging.debug(f"Agent result keys: {result.keys()}")
 
         # 결과 처리
         final_message = result["messages"][-1] if "messages" in result else None
@@ -212,7 +217,7 @@ async def process_message(user_id: str, message: str, conversation_id: str, cont
         }
 
     except Exception as e:
-        logging.error(f"Error processing message: {str(e)}")
+        logging.error(f"Error processing message: {str(e)}", exc_info=True)
 
         # 에러 메시지 추가
         error_message = "Sorry, I encountered an error processing your request. Please try again."
