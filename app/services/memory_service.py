@@ -49,8 +49,8 @@ def save_message(conversation_id: str, role: str, content: str) -> None:
             "updated_at": datetime.now().isoformat()
         }
 
-        with open(file_path, "w") as f:
-            json.dump(data, f, indent=2)
+        with open(file_path, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2, ensure_ascii=False)
 
     except Exception as e:
         logging.error(f"Error saving message to file: {str(e)}")
