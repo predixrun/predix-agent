@@ -5,9 +5,9 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from app.dependecies import verify_api_key
 from app.models.chat import ChatRequest, ChatResponse
 from app.services.chat_service import process_chat_message
+from app.services.memory_service import get_formatted_messages, list_conversations
 
 router = APIRouter()
-
 
 @router.post("/chat", response_model=ChatResponse)
 async def chat(
@@ -15,7 +15,7 @@ async def chat(
         api_key: str = Depends(verify_api_key)
 ):
     """
-    Process a chat message from a user.
+    채팅 메시지 처리
     """
     return await process_chat_message(
         user_id=request.user_id,
@@ -23,17 +23,17 @@ async def chat(
         conversation_id=request.conversation_id,
     )
 
-
 @router.get("/conversations/{conversation_id}", response_model=dict[str, Any])
 async def get_conversation(
         conversation_id: str,
         api_key: str = Depends(verify_api_key)
 ):
     """
-    Get all messages in a conversation.
-    """
-    from app.services.memory_service import get_formatted_messages
+    대화 내역 조회
 
+    Returns:
+        대화 메시지 목록
+    """
     messages = get_formatted_messages(conversation_id)
 
     if not messages:
@@ -47,16 +47,11 @@ async def get_conversation(
         "messages": messages
     }
 
-
 @router.get("/conversations", response_model=list[str])
 async def list_all_conversations(
         api_key: str = Depends(verify_api_key)
 ):
     """
-    List all conversation IDs.
-    For PoC debugging.
-
+    모든 대화 ID 목록 조회
     """
-    from app.services.memory_service import list_conversations
-
     return list_conversations()
