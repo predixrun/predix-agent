@@ -13,14 +13,6 @@ from app.tools.sports_tools import sports_info_tool
 
 SYSTEM_PROMPT = """You are an AI assistant for the PrediX prediction market platform.
 PrediX allows users to create and participate in prediction markets for sports events.
-
-Based on the user's message, choose the appropriate tool:
-- If the user wants to create a prediction market (mentions creating a market, betting on a team, etc.), use the create_prediction_market tool
-- If the user asks about sports information (teams, matches, scores, etc.), use the get_sports_information tool
-- If the user selects a market option or provides a betting amount, use the process_market_selection tool
-- For general questions and conversations, use the respond_to_general_chat tool
-
-directly select the appropriate tool based on the user's message content.
 """
 
 

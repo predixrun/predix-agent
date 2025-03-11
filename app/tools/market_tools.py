@@ -349,13 +349,13 @@ async def process_market_selection(
 create_market_tool = StructuredTool.from_function(
     func=create_prediction_market,
     name="create_prediction_market",
-    description="Create a prediction market based on a user message",
+    description="Create a prediction market (mentions creating a market, betting on a team, etc.)",
     coroutine=create_prediction_market
 )
 
 process_selection_tool = StructuredTool.from_function(
     func=process_market_selection,
     name="process_market_selection",
-    description="Process a user's selection of a market option",
+    description="If the user selects a market option or provides a betting amount",
     coroutine=process_market_selection
 )
