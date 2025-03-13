@@ -7,6 +7,7 @@ from langgraph.prebuilt import create_react_agent
 
 from app.config import settings
 from app.models.chat import MessageType
+from app.services.memory_service import save_tool_message
 
 # 시스템 프롬프트
 SYSTEM_PROMPT = """
@@ -44,16 +45,16 @@ def create_agent():
     )
 
     # 도구 초기화 (동적 임포트로 순환 참조 방지)
-    from app.tools.market_tools import create_market_tool, select_option_tool, set_bet_amount_tool
+    # from app.tools.market_tools import create_market_tool, select_option_tool, set_bet_amount_tool
     from app.tools.sports_tools import fixture_search_tool, league_search_tool, team_search_tool
 
     tools = [
         league_search_tool,
         team_search_tool,
         fixture_search_tool,
-        create_market_tool,
-        select_option_tool,
-        set_bet_amount_tool
+        # create_market_tool,
+        # select_option_tool,
+        # set_bet_amount_tool
     ]
 
     # 프롬프트 생성
@@ -87,16 +88,76 @@ def extract_tool_data(result_state: dict[str, Any]) -> tuple[MessageType, dict[s
     Returns:
         메시지 타입과 데이터 튜플
     """
+    import json
+
     message_type = MessageType.TEXT
     data = None
 
     # 디버깅: 결과 상태 구조 확인
     logging.debug(f"Result state keys: {result_state.keys()}")
-    if "intermediate_steps" in result_state:
-        logging.debug(f"Found intermediate_steps with {len(result_state['intermediate_steps'])} entries")
 
-    # intermediate_steps가 있는지 확인 (react 에이전트에서는 이 형태로 결과 제공)
-    if "intermediate_steps" in result_state:
+    # messages 배열에서 ToolMessage 찾기
+    if "messages" in result_state:
+        from langchain_core.messages import ToolMessage
+
+        for msg in result_state["messages"]:
+            if isinstance(msg, ToolMessage):
+                tool_name = getattr(msg, "name", None)
+                tool_call_id = getattr(msg, "tool_call_id", None)
+
+                if not tool_name:
+                    continue
+
+                # ToolMessage에서 content 추출
+                content = msg.content
+
+                # content가 문자열이면 JSON 파싱 시도
+                if isinstance(content, str):
+                    try:
+                        content_data = json.loads(content)
+                    except (json.JSONDecodeError, TypeError):
+                        content_data = {"message": str(content)}
+                else:
+                    content_data = content
+
+                # 도구 메시지 저장 (호출 ID가 없는 경우 생성)
+                if tool_call_id is None:
+                    tool_call_id = f"call_{tool_name}_{datetime.now().timestamp()}"
+
+                # 도구 메시지 저장
+                save_tool_message(
+                    conversation_id=result_state.get("configurable", {}).get("thread_id", "unknown"),
+                    tool_call_id=tool_call_id,
+                    content=str(content),
+                    status="success",
+                    artifact=content_data,
+                )
+
+                # 도구 유형에 따라 메시지 타입과 데이터 설정
+                if tool_name == "create_market":
+                    message_type = MessageType.MARKET_OPTIONS
+                    data = content_data
+
+                elif tool_name == "select_option":
+                    message_type = MessageType.BETTING_AMOUNT_REQUEST
+                    data = content_data
+
+                elif tool_name == "set_bet_amount":
+                    message_type = MessageType.MARKET_FINALIZED
+                    data = content_data
+
+                elif tool_name in ["league_search", "team_search", "fixture_search"]:
+                    message_type = MessageType.SPORTS_SEARCH
+                    # 스포츠 데이터가 있으면 사용, 없으면 전체 content 사용
+                    if "sports_data" in content_data:
+                        data = content_data["sports_data"]
+                    elif "fixtures" in content_data or "teams" in content_data or "leagues" in content_data:
+                        data = content_data
+                    else:
+                        data = {"message": content_data.get("message", "Sports data retrieved")}
+
+    # intermediate_steps도 체크 (일부 에이전트 유형은 여기에 데이터가 있을 수 있음)
+    if "intermediate_steps" in result_state and not data:
         for i, step in enumerate(result_state["intermediate_steps"]):
             logging.debug(f"Step {i}: {step}")
 
@@ -108,10 +169,22 @@ def extract_tool_data(result_state: dict[str, Any]) -> tuple[MessageType, dict[s
 
             # 액션에서 도구 이름 추출
             tool_name = None
+            tool_call_id = None
+
             if hasattr(action, "tool"):
                 tool_name = action.tool
+                # 도구 호출 ID 추출 시도
+                if hasattr(action, "tool_call_id"):
+                    tool_call_id = action.tool_call_id
+                elif hasattr(action, "id"):
+                    tool_call_id = action.id
             elif isinstance(action, dict) and "name" in action:
                 tool_name = action["name"]
+                # 도구 호출 ID 추출 시도
+                if "tool_call_id" in action:
+                    tool_call_id = action["tool_call_id"]
+                elif "id" in action:
+                    tool_call_id = action["id"]
 
             if not tool_name:
                 continue
@@ -119,6 +192,20 @@ def extract_tool_data(result_state: dict[str, Any]) -> tuple[MessageType, dict[s
             # 도구 결과가 딕셔너리인 경우만 처리
             if not isinstance(observation, dict):
                 continue
+
+            # 도구 메시지 저장 (호출 ID가 없는 경우 생성)
+            if tool_call_id is None:
+                tool_call_id = f"call_{tool_name}_{datetime.now().timestamp()}"
+
+            # 문자열로 변환 (JSON 직렬화 가능하게)
+            content = str(observation.get("message", ""))
+            save_tool_message(
+                conversation_id=result_state.get("configurable", {}).get("thread_id", "unknown"),
+                tool_call_id=tool_call_id,
+                content=content,
+                status="success",
+                artifact=observation,
+            )
 
             # 마켓 생성 도구
             if tool_name == "create_market":
@@ -138,11 +225,12 @@ def extract_tool_data(result_state: dict[str, Any]) -> tuple[MessageType, dict[s
             # 스포츠 검색 도구
             elif tool_name in ["league_search", "team_search", "fixture_search"]:
                 message_type = MessageType.SPORTS_SEARCH
-                data = observation.get("sports_data", {})
+                data = observation.get("sports_data", observation)
 
     return message_type, data
 
-async def process_message(user_id: str, message: str, conversation_id: str, context: list[dict[str, str]] | None = None) -> dict[str, Any]:
+
+async def process_message(user_id: str, message: str, conversation_id: str) -> dict[str, Any]:
     """
     사용자 메시지 처리
 
@@ -150,7 +238,6 @@ async def process_message(user_id: str, message: str, conversation_id: str, cont
         user_id: 사용자 ID
         message: 사용자 메시지
         conversation_id: 대화 ID
-        context: 이전 대화 컨텍스트 (옵션)
 
     Returns:
         처리 결과
@@ -161,7 +248,7 @@ async def process_message(user_id: str, message: str, conversation_id: str, cont
     agent = create_agent()
 
     # 기존 메시지 가져오기
-    messages = context or get_memory_messages(conversation_id)
+    messages = get_memory_messages(conversation_id)
 
     # 메시지 목록 생성
     messages_list = [{"role": msg["role"], "content": msg["content"]} for msg in messages]
@@ -188,11 +275,42 @@ async def process_message(user_id: str, message: str, conversation_id: str, cont
         logging.debug(f"Agent result keys: {result.keys()}")
 
         # 결과 처리
-        final_message = result["messages"][-1] if "messages" in result else None
-        final_content = final_message.content if final_message else "I couldn't process your request."
+        final_message = result["messages"][-1] if "messages" in result and result["messages"] else None
+        final_content = final_message.content if final_message and hasattr(final_message, "content") else "I couldn't process your request."
 
         # 메모리에 응답 저장
         save_message(conversation_id, "assistant", final_content)
+
+        # LangChain의 ToolMessage가 있는지 확인하고 메모리에 저장
+        if "messages" in result:
+            from langchain_core.messages import ToolMessage
+            for msg in result["messages"]:
+                if isinstance(msg, ToolMessage):
+                    # ToolMessage의 정보 추출
+                    tool_call_id = getattr(msg, "tool_call_id", f"call_{datetime.now().timestamp()}")
+                    content = msg.content
+                    name = getattr(msg, "name", "unknown_tool")
+                    status = getattr(msg, "status", "success")
+
+                    # artifact 데이터 추출
+                    artifact = None
+                    if isinstance(content, str):
+                        try:
+                            import json
+                            artifact = json.loads(content)
+                        except (json.JSONDecodeError, TypeError):
+                            artifact = {"message": content}
+                    else:
+                        artifact = content
+
+                    # 도구 메시지 저장
+                    save_tool_message(
+                        conversation_id=conversation_id,
+                        tool_call_id=tool_call_id,
+                        content=str(content),
+                        status=status,
+                        artifact=artifact
+                    )
 
         # 도구 실행 결과에서 메시지 타입과 데이터 추출
         message_type, data = extract_tool_data(result)

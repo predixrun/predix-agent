@@ -32,6 +32,7 @@ def save_message(conversation_id: str, role: str, content: str) -> None:
 
     # 새 메시지 생성
     message = {
+        "type": "text",
         "role": role,
         "content": content,
         "timestamp": datetime.now().isoformat()
@@ -55,9 +56,57 @@ def save_message(conversation_id: str, role: str, content: str) -> None:
     except Exception as e:
         logging.error(f"Error saving message to file: {str(e)}")
 
+def save_tool_message(conversation_id: str, tool_call_id: str, content: str,
+                      status: str = "success", artifact: Any | None = None) -> None:
+    """
+    도구 메시지 저장 (메모리와 파일 모두)
+    모든 메시지가 _memory_store에 통합되어 저장됨
+
+    Args:
+        conversation_id: 대화 ID
+        tool_call_id: 도구 호출 ID
+        content: 메시지 내용
+        status: 도구 실행 상태 ('success' 또는 'error')
+        artifact: 추가 데이터
+    """
+    if conversation_id not in _memory_store:
+        _memory_store[conversation_id] = []
+
+    # 새 도구 메시지 생성
+    tool_message = {
+        "type": "tool",
+        "role": "tool",  # 역할도 추가하여 일관성 유지
+        "tool_call_id": tool_call_id,
+        "content": content,
+        "status": status,
+        "timestamp": datetime.now().isoformat()
+    }
+
+    # artifact가 있으면 추가
+    if artifact:
+        tool_message["artifact"] = artifact
+
+    # 메모리에 추가
+    _memory_store[conversation_id].append(tool_message)
+
+    # 파일에 저장
+    try:
+        file_path = get_memory_path(conversation_id)
+        data = {
+            "conversation_id": conversation_id,
+            "messages": _memory_store[conversation_id],
+            "updated_at": datetime.now().isoformat()
+        }
+
+        with open(file_path, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2, ensure_ascii=False)
+
+    except Exception as e:
+        logging.error(f"Error saving tool message to file: {str(e)}")
+
 def get_memory_messages(conversation_id: str) -> list[dict[str, str]]:
     """
-    대화 메시지 가져오기
+    일반 대화 메시지만 가져오기 (tool 타입 제외)
 
     Args:
         conversation_id: 대화 ID
@@ -65,10 +114,11 @@ def get_memory_messages(conversation_id: str) -> list[dict[str, str]]:
     Returns:
         메시지 목록 (role, content 포함)
     """
-    # 메모리에서 확인
+    # 메모리에서 가져와 필터링
     if conversation_id in _memory_store:
         return [{"role": msg["role"], "content": msg["content"]}
-                for msg in _memory_store[conversation_id]]
+                for msg in _memory_store[conversation_id]
+                if msg.get("type") != "tool"]  # tool 타입 제외
 
     # 파일에서 로드 시도
     file_path = get_memory_path(conversation_id)
@@ -80,8 +130,10 @@ def get_memory_messages(conversation_id: str) -> list[dict[str, str]]:
                 messages = data.get("messages", [])
                 _memory_store[conversation_id] = messages
 
+                # 일반 메시지만 필터링하여 반환
                 return [{"role": msg["role"], "content": msg["content"]}
-                        for msg in messages]
+                        for msg in messages
+                        if msg.get("type") != "tool"]
 
         except Exception as e:
             logging.error(f"Error loading messages from file: {str(e)}")
@@ -90,29 +142,118 @@ def get_memory_messages(conversation_id: str) -> list[dict[str, str]]:
     _memory_store[conversation_id] = []
     return []
 
+def get_tool_messages(conversation_id: str) -> list[dict[str, Any]]:
+    """
+    도구 메시지만 가져오기
+
+    Args:
+        conversation_id: 대화 ID
+
+    Returns:
+        도구 메시지 목록
+    """
+    # 메모리에서 도구 메시지만 필터링
+    if conversation_id in _memory_store:
+        return [msg for msg in _memory_store[conversation_id]
+                if msg.get("type") == "tool"]
+
+    # 파일에서 로드 시도
+    file_path = get_memory_path(conversation_id)
+    if os.path.exists(file_path):
+        try:
+            with open(file_path) as f:
+                data = json.load(f)
+
+                messages = data.get("messages", [])
+                _memory_store[conversation_id] = messages
+
+                # 도구 메시지만 필터링하여 반환
+                return [msg for msg in messages
+                        if msg.get("type") == "tool"]
+
+        except Exception as e:
+            logging.error(f"Error loading messages from file: {str(e)}")
+
+    # 메시지가 없는 경우
+    return []
+
 def get_formatted_messages(conversation_id: str) -> list[dict[str, Any]]:
     """
-    포맷팅된 메시지 목록 가져오기 (timestamp 포함)
+    포맷팅된 일반 메시지 목록 가져오기 (timestamp 포함, tool 타입 제외)
 
     Returns:
         메시지 목록 (role, content, timestamp 포함)
     """
     # 메모리에서 가져오기
-    messages = get_memory_messages(conversation_id)
+    if conversation_id not in _memory_store:
+        # 파일에서 로드 시도
+        file_path = get_memory_path(conversation_id)
+        if os.path.exists(file_path):
+            try:
+                with open(file_path) as f:
+                    data = json.load(f)
+                    _memory_store[conversation_id] = data.get("messages", [])
+            except Exception as e:
+                logging.error(f"Error loading messages from file: {str(e)}")
+                _memory_store[conversation_id] = []
+        else:
+            _memory_store[conversation_id] = []
 
-    # 타임스탬프 추가
+    # 일반 메시지만 필터링
     return [
         {
             "role": msg["role"],
             "content": msg["content"],
-            "timestamp": (
-                _memory_store.get(conversation_id, [])[i].get("timestamp", datetime.now().isoformat())
-                if i < len(_memory_store.get(conversation_id, []))
-                else datetime.now().isoformat()
-            )
+            "timestamp": msg.get("timestamp", datetime.now().isoformat())
         }
-        for i, msg in enumerate(messages)
+        for msg in _memory_store[conversation_id]
+        if msg.get("type") != "tool"
     ]
+
+def get_all_messages(conversation_id: str) -> dict[str, Any]:
+    """
+    모든 메시지 가져오기 (일반 메시지와 도구 메시지 분리)
+
+    Args:
+        conversation_id: 대화 ID
+
+    Returns:
+        일반 메시지와 도구 메시지를 포함한 딕셔너리
+    """
+    return {
+        "conversation_id": conversation_id,
+        "messages": get_formatted_messages(conversation_id),
+        "tool_messages": get_tool_messages(conversation_id)
+    }
+
+def get_raw_messages(conversation_id: str) -> list[dict[str, Any]]:
+    """
+    모든 메시지를 순서대로 가져오기 (타입 구분 없이 원본 형태 그대로)
+
+    Args:
+        conversation_id: 대화 ID
+
+    Returns:
+        모든 메시지 목록
+    """
+    if conversation_id in _memory_store:
+        return _memory_store[conversation_id]
+
+    # 파일에서 로드 시도
+    file_path = get_memory_path(conversation_id)
+    if os.path.exists(file_path):
+        try:
+            with open(file_path) as f:
+                data = json.load(f)
+                messages = data.get("messages", [])
+                _memory_store[conversation_id] = messages
+                return messages
+        except Exception as e:
+            logging.error(f"Error loading messages from file: {str(e)}")
+
+    # 메시지가 없는 경우
+    _memory_store[conversation_id] = []
+    return []
 
 def list_conversations() -> list[str]:
     """

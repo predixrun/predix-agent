@@ -4,6 +4,7 @@ from fastapi import HTTPException
 
 from app.agent import process_message
 from app.models.chat import ChatResponse, MessageType
+from app.services.memory_service import get_tool_messages
 
 
 async def process_chat_message(
@@ -31,6 +32,16 @@ async def process_chat_message(
     try:
         # 에이전트 처리
         result = await process_message(user_id, message, conversation_id)
+
+        # 도구 메시지 가져오기
+        tool_messages = get_tool_messages(conversation_id)
+
+        # 도구 메시지가 있고 결과에 데이터가 없는 경우 가장 최근 도구 메시지의 아티팩트를 사용
+        if tool_messages and not result["data"]:
+            # 가장 최근 도구 메시지 데이터를 사용
+            latest_tool_message = tool_messages[-1]
+            if "artifact" in latest_tool_message:
+                result["data"] = latest_tool_message["artifact"]
 
         # 응답 생성
         return ChatResponse(
