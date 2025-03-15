@@ -31,7 +31,7 @@ When helping users create a market, you need to collect:
 3. Betting amount (in SOL) 반드시 유저에게 얼마를 베팅할 것인지 물어봐야 한다.
 
  유저에게 선택 옵션 혹은 베팅 금액 제시, 마켓생성을 할때, 아래의 툴을 반드시 선택해야 합니다.
-- select_option_dp_tool
+- dp_asking_options
 - set_bet_amount_dp_tool
 - create_market_dp_tool
 It will display appropriate FE UI elements to the user, which btn communicates actual blk server.
@@ -53,7 +53,7 @@ def create_agent():
     )
 
     # 도구 초기화 (동적 임포트로 순환 참조 방지)
-    from app.tools import create_market_dp_tool, select_option_dp_tool, set_bet_amount_dp_tool
+    from app.tools import create_market_dp_tool, dp_asking_options, set_bet_amount_dp_tool
     from app.tools.sports_tools import fixture_search_tool, league_search_tool, team_search_tool
 
     tools = [
@@ -61,7 +61,7 @@ def create_agent():
         team_search_tool,
         fixture_search_tool,
         create_market_dp_tool,
-        select_option_dp_tool,
+        dp_asking_options,
         set_bet_amount_dp_tool
     ]
 
@@ -145,7 +145,7 @@ def extract_tool_data(result_state: dict[str, Any]) -> tuple[MessageType, dict[s
                 )
 
                 # 도구 유형에 따라 메시지 타입과 데이터 설정
-                if tool_name == "select_option_dp_tool":
+                if tool_name == "dp_asking_options":
                     message_type = MessageType.MARKET_OPTIONS
                     data = content_data
                     logging.info(f"Market options created: {tool_name}")
@@ -230,7 +230,7 @@ def extract_tool_data(result_state: dict[str, Any]) -> tuple[MessageType, dict[s
             )
 
             # 마켓 생성 도구
-            if tool_name == "select_option_dp_tool":
+            if tool_name == "dp_asking_options":
                 message_type = MessageType.MARKET_OPTIONS
                 data = observation
                 logging.info(f"Market options created from intermediate steps: {tool_name}")

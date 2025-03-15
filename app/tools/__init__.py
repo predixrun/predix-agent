@@ -19,7 +19,7 @@ def initialize_agent():
         raise
 
 # 도구들을 내보냄
-from .market_tools import create_market_dp_tool, select_option_dp_tool, set_bet_amount_dp_tool
+from .market_tools import create_market_dp_tool, dp_asking_options, set_bet_amount_dp_tool
 from .sports_tools import fixture_search_tool, league_search_tool, team_search_tool
 
 __all__ = [
@@ -28,6 +28,6 @@ __all__ = [
     'team_search_tool',
     'fixture_search_tool',
     'create_market_dp_tool',
-    'select_option_dp_tool',
+    'dp_asking_options',
     'set_bet_amount_dp_tool',
 ]
