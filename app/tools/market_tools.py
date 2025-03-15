@@ -32,7 +32,7 @@ async def create_market(
     Returns:
         생성된 마켓 정보
     """
-    # logging.info(f"Creating market for fixture {fixture_id} - {home_team} vs {away_team}")
+    logging.info(f"Creating market for fixture {fixture_id} - {home_team} vs {away_team}")
 
     try:
         # 기본 제목 생성
@@ -204,23 +204,23 @@ async def set_bet_amount(
         }
 
 # 도구 생성
-create_market_tool = StructuredTool.from_function(
+create_market_dp_tool = StructuredTool.from_function(
     func=create_market,
     name="create_market",
-    description="Create a prediction market for a sports match. Use this when the user wants to create a prediction market.",
+    description="Prepare data for displaying a prediction market card to the user. This tool only formats data for frontend display and does not interact with blockchain. Use this when the user wants to create a prediction market for a sports match. All blockchain operations are handled by a separate service.",
     coroutine=create_market
 )
 
-select_option_tool = StructuredTool.from_function(
+select_option_dp_tool = StructuredTool.from_function(
     func=select_option,
     name="select_option",
-    description="Process a user's selection of a prediction option. Use when the user has selected a specific prediction option.",
+    description="Process a user's selection of a prediction option and prepare display data. This tool only formats data for frontend display and does not interact with blockchain. Use when the user has selected a specific prediction option. All blockchain operations are handled by a separate service.",
     coroutine=select_option
 )
 
-set_bet_amount_tool = StructuredTool.from_function(
+set_bet_amount_dp_tool = StructuredTool.from_function(
     func=set_bet_amount,
     name="set_bet_amount",
-    description="Set the bet amount for a prediction. Use when the user specifies how much they want to bet.",
+    description="Process a user's bet amount and prepare display data. This tool only formats data for frontend display and does not interact with blockchain. Use when the user specifies how much they want to bet. All blockchain operations are handled by a separate service.",
     coroutine=set_bet_amount
 )
