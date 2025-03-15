@@ -6,7 +6,6 @@ from fastapi import FastAPI, HTTPException, Request
 from app.config import setup_logging
 from app.models.response_models import TemplateJSONResponse
 from app.routers.api import api_router
-from app.tools import initialize_agent
 
 setup_logging()
 
@@ -19,10 +18,8 @@ def create_app() -> FastAPI:
         version="0.3.0",
         default_response_class=TemplateJSONResponse,
     )
-    initialize_agent()
-    logging.info("LangGraph ReAct agent initialized successfully")
-
     app.include_router(api_router)
+    logging.info("LangGraph Predix agent initialized successfully")
     return app
 
 app = create_app()
