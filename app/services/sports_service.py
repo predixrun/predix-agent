@@ -203,6 +203,27 @@ async def get_leagues(
         return []
 
 
+async def get_fixture_details(fixture_id: int) -> dict[str, Any]:
+    """
+    특정 fixture ID로 경기 상세 정보를 조회합니다.
+
+    Args:
+        fixture_id: 조회할 경기 ID
+
+    Returns:
+        경기 상세 정보 또는 찾을 수 없는 경우 빈 딕셔너리
+    """
+    logging.info(f"Getting fixture details for ID: {fixture_id}")
+    fixtures = await get_fixtures(fixture_id=fixture_id)
+
+    if not fixtures or len(fixtures) == 0:
+        logging.error(f"No fixture found with ID: {fixture_id}")
+        return {}
+
+    # 첫 번째(유일한) 경기 정보 반환
+    return fixtures[0]
+
+
 def preprocess_sports_data(sports_data: dict[str, list]) -> dict[str, list]:
     """
     Preprocess and limit sports data to make it more manageable for the LLM.

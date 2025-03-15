@@ -20,6 +20,11 @@ class Settings(BaseSettings):
 
     SPORTS_API_KEY: str
 
+    LANGSMITH_TRACING: bool = True
+    LANGSMITH_ENDPOINT: str = "https://api.smith.langchain.com"
+    LANGSMITH_API_KEY : str
+    LANGSMITH_PROJECT: str = "predix"
+
     class Config:
         env_file = ".env"
         env_file_encoding = "utf-8"

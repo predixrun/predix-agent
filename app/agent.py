@@ -1,6 +1,7 @@
 import logging
-from datetime import datetime
 from typing import Any
+import json
+from datetime import datetime
 
 from langchain_openai import ChatOpenAI
 from langgraph.prebuilt import create_react_agent
@@ -15,8 +16,6 @@ You are an AI assistant for the PrediX prediction market platform.
 PrediX allows users to create and participate in prediction markets for sports(Football) events.
 Currently only Football is supported.
 
-Current Date (UTC): {current_datetime}, {current_day}
-
 Your main tasks are:
 1. Help users create prediction markets for sports events
 2. Answer questions about sports events and prediction markets
@@ -26,21 +25,24 @@ You DO NOT directly interact with blockchain or create actual markets - that's h
 Your tools format data that will be shown to users as cards or buttons in the frontend.
 
 When helping users create a market, you need to collect:
-1. Sports event information (teams, date) - use search tools to find real events. fixture_id도 괄호로 감싸고 알려주세요.
+1. Sports event information (teams, date) - use search tools to find real events. Search in English.
 2. User's prediction option (which team will win vs draw&lose, 현재는 승리 vs 무승부 및 패배 두 그룹으로 나눠진다.)
 3. Betting amount (in SOL) 반드시 유저에게 얼마를 베팅할 것인지 물어봐야 한다.
 
- 유저에게 선택 옵션 혹은 베팅 금액 제시, 마켓생성을 할때, 아래의 툴을 반드시 선택해야 합니다.
-- select_option_dp_tool
+유저에게 선택 옵션 혹은 베팅 금액 제시, 마켓생성을 할때, 아래의 툴을 반드시 선택해야 합니다.
+- dp_asking_options
 - set_bet_amount_dp_tool
 - create_market_dp_tool
 It will display appropriate FE UI elements to the user, which btn communicates actual blk server.
 
 If the user provides incomplete information, ask for clarification.
 친구같은 친근한 말투를 사용하라. 
+
+SYSTEM_INFO: USER_ID = {user_id} , conversation_id: {conversation_id}
+Current Date (UTC): {current_datetime}, {current_day}
 """
 
-def create_agent():
+def create_agent(user_id: str, conversation_id: str):
     """
     ReAct 에이전트 생성 (create_react_agent 사용)
     """
@@ -53,7 +55,7 @@ def create_agent():
     )
 
     # 도구 초기화 (동적 임포트로 순환 참조 방지)
-    from app.tools import create_market_dp_tool, select_option_dp_tool, set_bet_amount_dp_tool
+    from app.tools import create_market_dp_tool, dp_asking_options, set_bet_amount_dp_tool
     from app.tools.sports_tools import fixture_search_tool, league_search_tool, team_search_tool
 
     tools = [
@@ -61,16 +63,19 @@ def create_agent():
         team_search_tool,
         fixture_search_tool,
         create_market_dp_tool,
-        select_option_dp_tool,
+        dp_asking_options,
         set_bet_amount_dp_tool
     ]
 
     # 프롬프트 생성
     current_datetime = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     current_day = datetime.now().strftime("%A")
+    # todo:: user_id, conversation_id를 런타임 주입으로 변경(InjectedState)
     prompt = SYSTEM_PROMPT.format(
         current_datetime=current_datetime,
-        current_day=current_day
+        current_day=current_day,
+        user_id=user_id,
+        conversation_id=conversation_id
     )
 
     # create_react_agent 사용하여 에이전트 생성
@@ -96,8 +101,6 @@ def extract_tool_data(result_state: dict[str, Any]) -> tuple[MessageType, dict[s
     Returns:
         메시지 타입과 데이터 튜플
     """
-    import json
-
     message_type = MessageType.TEXT
     data = None
 
@@ -108,7 +111,7 @@ def extract_tool_data(result_state: dict[str, Any]) -> tuple[MessageType, dict[s
     if "messages" in result_state:
         from langchain_core.messages import ToolMessage
 
-        for msg in result_state["messages"]:
+        for msg in reversed(result_state["messages"]):
             if isinstance(msg, ToolMessage):
                 tool_name = getattr(msg, "name", None)
                 tool_call_id = getattr(msg, "tool_call_id", None)
@@ -127,38 +130,39 @@ def extract_tool_data(result_state: dict[str, Any]) -> tuple[MessageType, dict[s
                     try:
                         content_data = json.loads(content)
                     except (json.JSONDecodeError, TypeError):
-                        content_data = {"message": str(content)}
+                        content_data = str(content)
                 else:
                     content_data = content
 
-                # 도구 메시지 저장 (호출 ID가 없는 경우 생성)
-                if tool_call_id is None:
-                    tool_call_id = f"call_{tool_name}_{datetime.now().timestamp()}"
+                # JSON 문자열로 변환 (저장용)
+                try:
+                    content_string = json.dumps(content_data)
+                except Exception as e:
+                    logging.error(f"JSON serialization error: {e}")
+                    content_string = str(content_data)
 
                 # 도구 메시지 저장
                 save_tool_message(
                     conversation_id=result_state.get("configurable", {}).get("thread_id", "unknown"),
                     tool_call_id=tool_call_id,
-                    content=str(content),
+                    content=content_string,
                     status="success",
                     artifact=content_data,
                 )
 
                 # 도구 유형에 따라 메시지 타입과 데이터 설정
-                if tool_name == "create_market_dp_tool":
+                if tool_name == "dp_asking_options":
                     message_type = MessageType.MARKET_OPTIONS
-                    data = content_data
-                    logging.info(f"Market options created: {tool_name}")
-
-                elif tool_name == "select_option_dp_tool":
-                    message_type = MessageType.BETTING_AMOUNT_REQUEST
-                    data = content_data
-                    logging.info(f"Betting amount requested: {tool_name}")
+                    data = content_data  # 직렬화된 데이터 직접 사용
+                    logging.debug(f"Market options data: {data}")
 
                 elif tool_name == "set_bet_amount_dp_tool":
+                    message_type = MessageType.BETTING_AMOUNT_REQUEST
+                    data = content_data
+
+                elif tool_name == "create_market_dp_tool":
                     message_type = MessageType.MARKET_FINALIZED
                     data = content_data
-                    logging.info(f"Market finalized: {tool_name}")
 
                 elif tool_name in ["league_search", "team_search", "fixture_search"]:
                     message_type = MessageType.SPORTS_SEARCH
@@ -169,93 +173,10 @@ def extract_tool_data(result_state: dict[str, Any]) -> tuple[MessageType, dict[s
                         data = content_data
                     else:
                         data = {"message": content_data.get("message", "Sports data retrieved")}
-                    logging.info(f"Sports data retrieved: {tool_name}")
+                    logging.debug(f"Sports data retrieved: {tool_name}")
 
-                # 메시지 타입이 변경되었으면 더 이상 도구 메시지를 처리하지 않음
-                if message_type != MessageType.TEXT:
-                    return message_type, data
-
-    # intermediate_steps도 체크 (일부 에이전트 유형은 여기에 데이터가 있을 수 있음)
-    if "intermediate_steps" in result_state and not data:
-        for i, step in enumerate(result_state["intermediate_steps"]):
-            logging.debug(f"Step {i}: {step}")
-
-            if len(step) < 2:
-                continue
-
-            action = step[0]
-            observation = step[1]
-
-            # 액션에서 도구 이름 추출
-            tool_name = None
-            tool_call_id = None
-
-            if hasattr(action, "tool"):
-                tool_name = action.tool
-                # 도구 호출 ID 추출 시도
-                if hasattr(action, "tool_call_id"):
-                    tool_call_id = action.tool_call_id
-                elif hasattr(action, "id"):
-                    tool_call_id = action.id
-            elif isinstance(action, dict) and "name" in action:
-                tool_name = action["name"]
-                # 도구 호출 ID 추출 시도
-                if "tool_call_id" in action:
-                    tool_call_id = action["tool_call_id"]
-                elif "id" in action:
-                    tool_call_id = action["id"]
-
-            if not tool_name:
-                continue
-
-            # 디버깅: 도구 이름 로깅
-            logging.debug(f"Found tool in intermediate steps: {tool_name}")
-
-            # 도구 결과가 딕셔너리인 경우만 처리
-            if not isinstance(observation, dict):
-                continue
-
-            # 도구 메시지 저장 (호출 ID가 없는 경우 생성)
-            if tool_call_id is None:
-                tool_call_id = f"call_{tool_name}_{datetime.now().timestamp()}"
-
-            # 문자열로 변환 (JSON 직렬화 가능하게)
-            content = str(observation.get("message", ""))
-            save_tool_message(
-                conversation_id=result_state.get("configurable", {}).get("thread_id", "unknown"),
-                tool_call_id=tool_call_id,
-                content=content,
-                status="success",
-                artifact=observation,
-            )
-
-            # 마켓 생성 도구
-            if tool_name == "create_market_dp_tool":
-                message_type = MessageType.MARKET_OPTIONS
-                data = observation
-                logging.info(f"Market options created from intermediate steps: {tool_name}")
-
-            # 옵션 선택 도구
-            elif tool_name == "select_option_dp_tool":
-                message_type = MessageType.BETTING_AMOUNT_REQUEST
-                data = observation
-                logging.info(f"Betting amount requested from intermediate steps: {tool_name}")
-
-            # 베팅 금액 설정 도구
-            elif tool_name == "set_bet_amount_dp_tool":
-                message_type = MessageType.MARKET_FINALIZED
-                data = observation
-                logging.info(f"Market finalized from intermediate steps: {tool_name}")
-
-            # 스포츠 검색 도구
-            elif tool_name in ["league_search", "team_search", "fixture_search"]:
-                message_type = MessageType.SPORTS_SEARCH
-                data = observation.get("sports_data", observation)
-                logging.info(f"Sports data retrieved from intermediate steps: {tool_name}")
-
-            # 도구 유형이 확인되면 반환
-            if message_type != MessageType.TEXT:
-                return message_type, data
+                # 한번 데이터 찾으면 루프 종료
+                break
 
     return message_type, data
 
@@ -275,7 +196,7 @@ async def process_message(user_id: str, message: str, conversation_id: str) -> d
     from app.services.memory_service import get_memory_messages, save_message
 
     # 매번 새로운 에이전트 생성 (싱글톤 제거)
-    agent = create_agent()
+    agent = create_agent(user_id, conversation_id)
 
     # 기존 메시지 가져오기
     messages = get_memory_messages(conversation_id)
@@ -294,7 +215,7 @@ async def process_message(user_id: str, message: str, conversation_id: str) -> d
             }
         }
 
-        logging.info(f"Invoking agent with message: {message}")
+        logging.debug(f"Invoking agent with message: {message}")
 
         # 에이전트 실행
         result = await agent.ainvoke(
@@ -326,10 +247,9 @@ async def process_message(user_id: str, message: str, conversation_id: str) -> d
                     artifact = None
                     if isinstance(content, str):
                         try:
-                            import json
                             artifact = json.loads(content)
                         except (json.JSONDecodeError, TypeError):
-                            artifact = {"message": content}
+                            artifact = content
                     else:
                         artifact = content
 
@@ -344,9 +264,7 @@ async def process_message(user_id: str, message: str, conversation_id: str) -> d
 
         # 도구 실행 결과에서 메시지 타입과 데이터 추출
         message_type, data = extract_tool_data(result)
-
-        # 디버깅 로그 추가
-        logging.info(f"Extracted message_type: {message_type}, data available: {data is not None}")
+        logging.debug(f"Extracted message_type: {message_type}, data available: {data is not None}")
 
         # 응답 생성
         return {

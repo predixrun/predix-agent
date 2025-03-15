@@ -1,10 +1,144 @@
 import logging
-from datetime import datetime
-
 from langchain.tools import StructuredTool
 
-from app.models.market import SelectionType
+from app.services.sports_service import get_fixture_details
+from datetime import datetime
 
+from app.models.market import SelectionType, Selection
+
+async def asking_options(
+    user_id: str,
+    selections_data: list[Selection],
+    fixture_id: int,
+) -> dict:
+    """
+    마켓 옵션 선택 도구
+
+    Args:
+        user_id:str 사용자 ID (필수)
+        selections_data: list[Selection] 선택 옵션 데이터 (필수)
+        fixture_id: 경기 ID (필수)
+
+    Returns:
+        FE에 표시할 Options comp data
+    """
+    try:
+        # 경기 정보 조회
+        fixture_data = await get_fixture_details(fixture_id)
+
+        if not fixture_data:
+            raise ValueError(f"Could not find fixture with ID: {fixture_id}")
+
+        # 경기 정보에서 필요한 데이터 추출
+        home_team_id = fixture_data["teams"]["home"]["id"]
+        home_team_name = fixture_data["teams"]["home"]["name"]
+        away_team_id = fixture_data["teams"]["away"]["id"]
+        away_team_name = fixture_data["teams"]["away"]["name"]
+        league_id = fixture_data["league"]["id"]
+        league_name = fixture_data["league"]["name"]
+        league_country = fixture_data["league"]["country"]
+        match_date = fixture_data["fixture"]["date"]
+
+        # 경기장 정보 가져오기
+        venue_name = "Unknown Venue"
+        venue_city = "Unknown City"
+        if "venue" in fixture_data["fixture"] and fixture_data["fixture"]["venue"]:
+            venue_name = fixture_data["fixture"]["venue"].get("name", "Unknown Venue")
+            venue_city = fixture_data["fixture"]["venue"].get("city", "Unknown City")
+
+        # 직렬화 가능한 딕셔너리 생성(Enum 값 직접 설정)
+        serialized_data = {
+            "market": {
+                "creator_id": user_id,
+                "title": f"{home_team_name} vs {away_team_name} Match Prediction",
+                "description": f"Prediction market for the match between {home_team_name} and {away_team_name} on {match_date}",
+                "type": "binary",
+                "status": "draft",
+                "category": "sports",
+                "amount": 1.0,
+                "currency": "SOL",
+                "close_date": match_date,
+                "created_at": datetime.now().isoformat()
+            },
+            "selections": [
+                {
+                    "name": selection.name,
+                    "type": selection.type.value,
+                    "description": selection.description
+                }
+                for selection in selections_data
+            ],
+            "event": {
+                "type": "football_match",
+                "fixture_id": fixture_id,
+                "home_team": {
+                    "id": home_team_id,
+                    "name": home_team_name
+                },
+                "away_team": {
+                    "id": away_team_id,
+                    "name": away_team_name
+                },
+                "league": {
+                    "id": league_id,
+                    "name": league_name,
+                    "country": league_country
+                },
+                "start_time": match_date,
+                "venue": {
+                    "name": venue_name,
+                    "city": venue_city
+                }
+            }
+        }
+
+        return serialized_data
+
+    except Exception as e:
+        logging.error(f"Error selecting option: {str(e)}")
+        return {"error": str(e), "user_id": user_id}
+
+
+async def set_bet_amount(
+    user_id: str,
+    amount: float,
+    selection: str,
+    market_title: str,
+    market_data: dict = None,
+    selections_data: list = None,
+    event_data: dict = None,
+) -> dict:
+    """
+    베팅 금액 설정 도구
+
+    Args:
+        user_id: 사용자 ID
+        amount: 베팅 금액
+        selection: 선택한 옵션
+        market_title: 마켓 제목
+        market_data: 마켓 데이터 (옵션)
+        selections_data: 선택 옵션 데이터 (옵션)
+        event_data: 이벤트 데이터 (옵션)
+
+    Returns:
+        베팅 정보
+    """
+    # logging.info(f"User {user_id} set bet amount: {amount} SOL for {selection} on {market_title}")
+
+    try:
+        # 기본 응답 메시지
+        message = f"You've selected {selection} and the wager is {amount} SOL. Proceed?"
+
+        return {
+            "message": message,
+            "message_type": "BETTING_AMOUNT_REQUEST",
+            "data": {"selected_option": selection, "initial_amount": amount},
+            "user_id": user_id,
+        }
+
+    except Exception as e:
+        logging.error(f"Error setting bet amount: {str(e)}")
+        return {"error": str(e), "user_id": user_id, "amount": amount, "selection": selection, "market_title": market_title}
 
 async def create_market(
         user_id: str,
@@ -13,8 +147,8 @@ async def create_market(
         away_team: str,
         league: str,
         match_date: str,
+        bet_amount: float,
         description: str | None = None,
-        bet_amount: float = 1.0
 ) -> dict:
     """
     예측 마켓 생성 도구
@@ -93,129 +227,39 @@ async def create_market(
             }
         }
 
-        # 마켓 패키지 생성 (USER BE에 전달할 데이터)
-        market_package = {
-            "market": market_data,
-            "selections": selections,
-            "event": event_data
-        }
+        # 응답 메시지 생성
+        message = f"I've created a prediction market: '{title}'. Please select one of the options."
 
         return {
-            "title": title,
-            "description": description,
-            "status": "draft",
-            "selections": selections,
-            "bet_amount": bet_amount,
-            "fixture_id": fixture_id,
-            "home_team": home_team,
-            "away_team": away_team,
-            "league": league,
-            "match_date": match_date,
-            "context": {
-                "user_id": user_id,
-                "market_package": market_package
-            }
+            "message": message,
+            "message_type": "MARKET_OPTIONS",
+            "data": {
+                "market": market_data,
+                "selections": selections,
+                "event": event_data
+            },
+            "user_id": user_id
         }
 
     except Exception as e:
         logging.error(f"Error creating market: {str(e)}")
         return {
             "error": str(e),
-            "title": f"{home_team} vs {away_team}",
-            "description": "Error creating market",
-            "status": "error"
+            "message": "Error creating market",
+            "message_type": "ERROR",
+            "data": {
+                "title": f"{home_team} vs {away_team}",
+                "description": "Error creating market"
+            }
         }
 
-async def select_option(
-        user_id: str,
-        selection: str,
-        market_title: str,
-        bet_amount: float = 1.0
-) -> dict:
-    """
-    마켓 옵션 선택 도구
-
-    Args:
-        user_id: 사용자 ID
-        selection: 선택한 옵션 이름
-        market_title: 마켓 제목
-        bet_amount: 베팅 금액
-
-    Returns:
-        선택 결과
-    """
-    # logging.info(f"User {user_id} selected option: {selection} for market: {market_title}")
-
-    try:
-        return {
-            "user_id": user_id,
-            "selected_option": selection,
-            "market_title": market_title,
-            "bet_amount": bet_amount,
-            "message": f"You've selected '{selection}' for '{market_title}'. The current bet amount is {bet_amount} SOL. You can change this amount if you'd like."
-        }
-
-    except Exception as e:
-        logging.error(f"Error selecting option: {str(e)}")
-        return {
-            "error": str(e),
-            "user_id": user_id,
-            "selected_option": selection,
-            "market_title": market_title
-        }
-
-async def set_bet_amount(
-        user_id: str,
-        amount: float,
-        selection: str,
-        market_title: str
-) -> dict:
-    """
-    베팅 금액 설정 도구
-
-    Args:
-        user_id: 사용자 ID
-        amount: 베팅 금액
-        selection: 선택한 옵션
-        market_title: 마켓 제목
-
-    Returns:
-        베팅 정보
-    """
-    # logging.info(f"User {user_id} set bet amount: {amount} SOL for {selection} on {market_title}")
-
-    try:
-        return {
-            "user_id": user_id,
-            "amount": amount,
-            "selection": selection,
-            "market_title": market_title,
-            "message": f"You've set your bet amount to {amount} SOL on '{selection}' for '{market_title}'. Would you like to proceed with creating this prediction?"
-        }
-
-    except Exception as e:
-        logging.error(f"Error setting bet amount: {str(e)}")
-        return {
-            "error": str(e),
-            "user_id": user_id,
-            "amount": amount,
-            "selection": selection,
-            "market_title": market_title
-        }
 
 # 도구 생성
-create_market_dp_tool = StructuredTool.from_function(
-    func=create_market,
-    name="create_market_dp_tool",
-    description="Prepare data for displaying a prediction market card to the user. This tool only formats data for frontend display and does not interact with blockchain. Use this when the user wants to create a prediction market for a sports match. All blockchain operations are handled by a separate service.",
-    coroutine=create_market
-)
-
-select_option_dp_tool = StructuredTool.from_function(
-    func=select_option,
-    name="select_option_dp_tool",
-    description="Process a user's selection of a prediction option and prepare display data. This tool only formats data for frontend display and does not interact with blockchain. Use when the user has selected a specific prediction option. All blockchain operations are handled by a separate service.",
-    coroutine=select_option
+dp_asking_options = StructuredTool.from_function(
+    func=asking_options,
+    name="dp_asking_options",
+    description="Generates selectable options displayed in FE based on the game content. The returned values from this tool determine the options available for the user.",
+    coroutine=asking_options
 )
 
 set_bet_amount_dp_tool = StructuredTool.from_function(
@@ -223,4 +267,11 @@ set_bet_amount_dp_tool = StructuredTool.from_function(
     name="set_bet_amount_dp_tool",
     description="Process a user's bet amount and prepare display data. This tool only formats data for frontend display and does not interact with blockchain. Use when the user specifies how much they want to bet. All blockchain operations are handled by a separate service.",
     coroutine=set_bet_amount
+)
+
+create_market_dp_tool = StructuredTool.from_function(
+    func=create_market,
+    name="create_market_dp_tool",
+    description="Prepare data for displaying a prediction market card to the user. This tool only formats data for frontend display and does not interact with blockchain. Use this when the user wants to create a prediction market for a sports match. All blockchain operations are handled by a separate service.",
+    coroutine=create_market
 )
