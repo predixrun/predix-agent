@@ -5,44 +5,91 @@ from langchain.tools import StructuredTool
 
 from app.models.market import SelectionType, Market, Selection, Event, EventTeam, EventLeague, EventVenue, MarketPackage
 
-
 async def asking_options(
     user_id: str,
     selections_data: list[Selection],
-    market_data: Market = None,
-    event_data: Event = None,
+    fixture_id: int,
 ) -> dict:
     """
     마켓 옵션 선택 도구
 
     Args:
-        user_id: 사용자 ID (필수)
-        selections_data: 선택 옵션 데이터 (필수)
-        market_data: 마켓 데이터
-        event_data: 이벤트 데이터
+        user_id:str 사용자 ID (필수)
+        selections_data: list[Selection] 선택 옵션 데이터 (필수)
+        fixture_id: 경기 ID (필수)
+
+        class Selection(BaseModel):
+            name: str
+            type: SelectionType
+            description: str | None = None
 
     Returns:
         선택 결과
     """
-    # logging.info(f"User {user_id} selected option: {selection} for market: {market_title}")
-
     try:
-        if not market_data or not selections_data or not event_data:
-            raise ValueError("market_data, selections_data, and event_data are required parameters")
+        from app.services.sports_service import get_fixture_details
 
-        # MarketPackage 모델을 사용하여 데이터 구성
-        market_package = MarketPackage(
-            market=market_data,
-            selections=selections_data,
-            event=event_data
+        # 경기 정보 조회
+        fixture_data = await get_fixture_details(fixture_id)
+
+        if not fixture_data:
+            raise ValueError(f"Could not find fixture with ID: {fixture_id}")
+
+        # 경기 정보에서 필요한 데이터 추출
+        home_team_id = fixture_data["teams"]["home"]["id"]
+        home_team_name = fixture_data["teams"]["home"]["name"]
+        away_team_id = fixture_data["teams"]["away"]["id"]
+        away_team_name = fixture_data["teams"]["away"]["name"]
+        league_id = fixture_data["league"]["id"]
+        league_name = fixture_data["league"]["name"]
+        league_country = fixture_data["league"]["country"]
+        match_date = fixture_data["fixture"]["date"]
+
+        # 경기장 정보 가져오기
+        venue_name = "Unknown Venue"
+        venue_city = "Unknown City"
+        if "venue" in fixture_data["fixture"] and fixture_data["fixture"]["venue"]:
+            venue_name = fixture_data["fixture"]["venue"].get("name", "Unknown Venue")
+            venue_city = fixture_data["fixture"]["venue"].get("city", "Unknown City")
+
+        # 이벤트 데이터 생성
+        event_data = Event(
+            type="football_match",
+            fixture_id=fixture_id,
+            home_team=EventTeam(id=home_team_id, name=home_team_name),
+            away_team=EventTeam(id=away_team_id, name=away_team_name),
+            league=EventLeague(id=league_id, name=league_name, country=league_country),
+            start_time=datetime.fromisoformat(match_date.replace("Z", "+00:00")),
+            venue=EventVenue(name=venue_name, city=venue_city),
         )
 
-        # 모델을 dict로 변환하여 반환
+        # 마켓 데이터 생성
+        title = f"{home_team_name} vs {away_team_name} Match Prediction"
+        description = (
+            f"Prediction market for the match between {home_team_name} and {away_team_name} on {event_data.start_time.strftime('%Y-%m-%d')}"
+        )
+
+        market_data = Market(
+            creator_id=user_id,
+            title=title,
+            description=description,
+            type="binary",
+            category="sports",
+            amount=1.0,  # 기본 금액
+            currency="SOL",
+            close_date=event_data.start_time,
+            created_at=datetime.now(),
+        )
+
+        # 마켓 패키지 생성
+        market_package = MarketPackage(market=market_data, selections=selections_data, event=event_data)
+
+        # 결과 반환
         return {
             "data": {
                 "market": market_package.market.model_dump(),
                 "selections": [s.model_dump() for s in market_package.selections],
-                "event": market_package.event.model_dump()
+                "event": market_package.event.model_dump(),
             },
             "user_id": user_id,
         }
