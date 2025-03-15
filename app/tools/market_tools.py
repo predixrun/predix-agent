@@ -206,21 +206,21 @@ async def set_bet_amount(
 # 도구 생성
 create_market_dp_tool = StructuredTool.from_function(
     func=create_market,
-    name="create_market",
+    name="create_market_dp_tool",
     description="Prepare data for displaying a prediction market card to the user. This tool only formats data for frontend display and does not interact with blockchain. Use this when the user wants to create a prediction market for a sports match. All blockchain operations are handled by a separate service.",
     coroutine=create_market
 )
 
 select_option_dp_tool = StructuredTool.from_function(
     func=select_option,
-    name="select_option",
+    name="select_option_dp_tool",
     description="Process a user's selection of a prediction option and prepare display data. This tool only formats data for frontend display and does not interact with blockchain. Use when the user has selected a specific prediction option. All blockchain operations are handled by a separate service.",
     coroutine=select_option
 )
 
 set_bet_amount_dp_tool = StructuredTool.from_function(
     func=set_bet_amount,
-    name="set_bet_amount",
+    name="set_bet_amount_dp_tool",
     description="Process a user's bet amount and prepare display data. This tool only formats data for frontend display and does not interact with blockchain. Use when the user specifies how much they want to bet. All blockchain operations are handled by a separate service.",
     coroutine=set_bet_amount
 )

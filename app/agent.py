@@ -26,14 +26,14 @@ You DO NOT directly interact with blockchain or create actual markets - that's h
 Your tools format data that will be shown to users as cards or buttons in the frontend.
 
 When helping users create a market, you need to collect:
-1. Sports event information (teams, date) - use search tools to find real events
+1. Sports event information (teams, date) - use search tools to find real events. fixture_id도 괄호로 감싸고 알려주세요.
 2. User's prediction option (which team will win vs draw&lose, 현재는 승리 vs 무승부 및 패배 두 그룹으로 나눠진다.)
 3. Betting amount (in SOL) 반드시 유저에게 얼마를 베팅할 것인지 물어봐야 한다.
 
- When delivering a proposal message to the user, always select an appropriate tool from the options below. 
-- create_market_dp_tool
+ 유저에게 선택 옵션 혹은 베팅 금액 제시, 마켓생성을 할때, 아래의 툴을 반드시 선택해야 합니다.
 - select_option_dp_tool
 - set_bet_amount_dp_tool
+- create_market_dp_tool
 It will display appropriate FE UI elements to the user, which btn communicates actual blk server.
 
 If the user provides incomplete information, ask for clarification.
@@ -116,6 +116,9 @@ def extract_tool_data(result_state: dict[str, Any]) -> tuple[MessageType, dict[s
                 if not tool_name:
                     continue
 
+                # 디버깅: 도구 호출 로깅
+                logging.debug(f"Tool called: {tool_name}")
+
                 # ToolMessage에서 content 추출
                 content = msg.content
 
@@ -142,17 +145,20 @@ def extract_tool_data(result_state: dict[str, Any]) -> tuple[MessageType, dict[s
                 )
 
                 # 도구 유형에 따라 메시지 타입과 데이터 설정
-                if tool_name == "create_market":
+                if tool_name == "create_market_dp_tool":
                     message_type = MessageType.MARKET_OPTIONS
                     data = content_data
+                    logging.info(f"Market options created: {tool_name}")
 
-                elif tool_name == "select_option":
+                elif tool_name == "select_option_dp_tool":
                     message_type = MessageType.BETTING_AMOUNT_REQUEST
                     data = content_data
+                    logging.info(f"Betting amount requested: {tool_name}")
 
-                elif tool_name == "set_bet_amount":
+                elif tool_name == "set_bet_amount_dp_tool":
                     message_type = MessageType.MARKET_FINALIZED
                     data = content_data
+                    logging.info(f"Market finalized: {tool_name}")
 
                 elif tool_name in ["league_search", "team_search", "fixture_search"]:
                     message_type = MessageType.SPORTS_SEARCH
@@ -163,6 +169,11 @@ def extract_tool_data(result_state: dict[str, Any]) -> tuple[MessageType, dict[s
                         data = content_data
                     else:
                         data = {"message": content_data.get("message", "Sports data retrieved")}
+                    logging.info(f"Sports data retrieved: {tool_name}")
+
+                # 메시지 타입이 변경되었으면 더 이상 도구 메시지를 처리하지 않음
+                if message_type != MessageType.TEXT:
+                    return message_type, data
 
     # intermediate_steps도 체크 (일부 에이전트 유형은 여기에 데이터가 있을 수 있음)
     if "intermediate_steps" in result_state and not data:
@@ -197,6 +208,9 @@ def extract_tool_data(result_state: dict[str, Any]) -> tuple[MessageType, dict[s
             if not tool_name:
                 continue
 
+            # 디버깅: 도구 이름 로깅
+            logging.debug(f"Found tool in intermediate steps: {tool_name}")
+
             # 도구 결과가 딕셔너리인 경우만 처리
             if not isinstance(observation, dict):
                 continue
@@ -216,24 +230,32 @@ def extract_tool_data(result_state: dict[str, Any]) -> tuple[MessageType, dict[s
             )
 
             # 마켓 생성 도구
-            if tool_name == "create_market":
+            if tool_name == "create_market_dp_tool":
                 message_type = MessageType.MARKET_OPTIONS
                 data = observation
+                logging.info(f"Market options created from intermediate steps: {tool_name}")
 
             # 옵션 선택 도구
-            elif tool_name == "select_option":
+            elif tool_name == "select_option_dp_tool":
                 message_type = MessageType.BETTING_AMOUNT_REQUEST
                 data = observation
+                logging.info(f"Betting amount requested from intermediate steps: {tool_name}")
 
             # 베팅 금액 설정 도구
-            elif tool_name == "set_bet_amount":
+            elif tool_name == "set_bet_amount_dp_tool":
                 message_type = MessageType.MARKET_FINALIZED
                 data = observation
+                logging.info(f"Market finalized from intermediate steps: {tool_name}")
 
             # 스포츠 검색 도구
             elif tool_name in ["league_search", "team_search", "fixture_search"]:
                 message_type = MessageType.SPORTS_SEARCH
                 data = observation.get("sports_data", observation)
+                logging.info(f"Sports data retrieved from intermediate steps: {tool_name}")
+
+            # 도구 유형이 확인되면 반환
+            if message_type != MessageType.TEXT:
+                return message_type, data
 
     return message_type, data
 
@@ -322,6 +344,9 @@ async def process_message(user_id: str, message: str, conversation_id: str) -> d
 
         # 도구 실행 결과에서 메시지 타입과 데이터 추출
         message_type, data = extract_tool_data(result)
+
+        # 디버깅 로그 추가
+        logging.info(f"Extracted message_type: {message_type}, data available: {data is not None}")
 
         # 응답 생성
         return {
