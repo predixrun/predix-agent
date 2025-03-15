@@ -31,7 +31,7 @@ async def process_chat_message(
 
     try:
         # 에이전트 처리
-        result = await process_message(user_id, message, conversation_id)
+        result = await process_message(message, conversation_id)
 
         # 도구 메시지 가져오기
         tool_messages = get_tool_messages(conversation_id)

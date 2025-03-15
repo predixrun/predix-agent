@@ -7,7 +7,6 @@ from datetime import datetime
 from app.models.market import SelectionType, Selection
 
 async def asking_options(
-    user_id: str,
     selections_data: list[Selection],
     fixture_id: int,
 ) -> dict:
@@ -15,7 +14,6 @@ async def asking_options(
     마켓 옵션 선택 도구
 
     Args:
-        user_id:str 사용자 ID (필수)
         selections_data: list[Selection] 선택 옵션 데이터 (필수)
         fixture_id: 경기 ID (필수)
 
@@ -49,7 +47,6 @@ async def asking_options(
         # 직렬화 가능한 딕셔너리 생성(Enum 값 직접 설정)
         serialized_data = {
             "market": {
-                "creator_id": user_id,
                 "title": f"{home_team_name} vs {away_team_name} Match Prediction",
                 "description": f"Prediction market for the match between {home_team_name} and {away_team_name} on {match_date}",
                 "type": "binary",
@@ -96,7 +93,7 @@ async def asking_options(
 
     except Exception as e:
         logging.error(f"Error selecting option: {str(e)}")
-        return {"error": str(e), "user_id": user_id}
+        return {"error": str(e)}
 
 
 async def asking_bet_amount(
@@ -128,7 +125,6 @@ async def asking_bet_amount(
         return {"error": str(e), "amount": amount, "selection": selection}
 
 async def market_finalized(
-        user_id: str,
         fixture_id: int,
         home_team: str,
         away_team: str,
@@ -141,7 +137,6 @@ async def market_finalized(
     예측 마켓 생성 도구
 
     Args:
-        user_id: 사용자 ID
         fixture_id: 경기 ID
         home_team: 홈팀 이름
         away_team: 원정팀 이름
@@ -179,7 +174,6 @@ async def market_finalized(
 
         # 마켓 데이터 생성
         market_data = {
-            "creator_id": user_id,
             "title": title,
             "description": description,
             "type": "binary",
@@ -225,7 +219,6 @@ async def market_finalized(
                 "selections": selections,
                 "event": event_data
             },
-            "user_id": user_id
         }
 
     except Exception as e:
