@@ -99,46 +99,33 @@ async def asking_options(
         return {"error": str(e), "user_id": user_id}
 
 
-async def set_bet_amount(
-    user_id: str,
-    amount: float,
+async def asking_bet_amount(
     selection: str,
-    market_title: str,
-    market_data: dict = None,
-    selections_data: list = None,
-    event_data: dict = None,
+    amount: float,
+    token: str = "SOL",
 ) -> dict:
     """
-    베팅 금액 설정 도구
+    베팅 금액 질의 도구
 
     Args:
-        user_id: 사용자 ID
-        amount: 베팅 금액
         selection: 선택한 옵션
-        market_title: 마켓 제목
-        market_data: 마켓 데이터 (옵션)
-        selections_data: 선택 옵션 데이터 (옵션)
-        event_data: 이벤트 데이터 (옵션)
+        amount: 베팅 금액
+        token: 토큰 (기본값: SOL)
 
     Returns:
-        베팅 정보
+        FE에 표시할 베팅 금액 data
     """
-    # logging.info(f"User {user_id} set bet amount: {amount} SOL for {selection} on {market_title}")
 
     try:
-        # 기본 응답 메시지
-        message = f"You've selected {selection} and the wager is {amount} SOL. Proceed?"
-
         return {
-            "message": message,
-            "message_type": "BETTING_AMOUNT_REQUEST",
-            "data": {"selected_option": selection, "initial_amount": amount},
-            "user_id": user_id,
+            "selected_option": selection,
+            "initial_amount": amount,
+            "token": token
         }
 
     except Exception as e:
         logging.error(f"Error setting bet amount: {str(e)}")
-        return {"error": str(e), "user_id": user_id, "amount": amount, "selection": selection, "market_title": market_title}
+        return {"error": str(e), "amount": amount, "selection": selection}
 
 async def create_market(
         user_id: str,
@@ -262,16 +249,16 @@ dp_asking_options = StructuredTool.from_function(
     coroutine=asking_options
 )
 
-set_bet_amount_dp_tool = StructuredTool.from_function(
-    func=set_bet_amount,
-    name="set_bet_amount_dp_tool",
-    description="Process a user's bet amount and prepare display data. This tool only formats data for frontend display and does not interact with blockchain. Use when the user specifies how much they want to bet. All blockchain operations are handled by a separate service.",
-    coroutine=set_bet_amount
+dp_asking_bet_amount = StructuredTool.from_function(
+    func=asking_bet_amount,
+    name="dp_asking_bet_amount",
+    description="Choose this tool when asking the user for the bet amount. It returns data for rendering the component in the FE.",
+    coroutine=asking_bet_amount
 )
 
 create_market_dp_tool = StructuredTool.from_function(
     func=create_market,
     name="create_market_dp_tool",
-    description="Prepare data for displaying a prediction market card to the user. This tool only formats data for frontend display and does not interact with blockchain. Use this when the user wants to create a prediction market for a sports match. All blockchain operations are handled by a separate service.",
+    description="Prepare data for displaying a prediction market card to the user. This tool only formats data for frontend display and does not interact with blockchain. Use this when the user wants to create a prediction market for a sports match.",
     coroutine=create_market
 )

@@ -26,16 +26,18 @@ Your tools format data that will be shown to users as cards or buttons in the fr
 
 When helping users create a market, you need to collect:
 1. Sports event information (teams, date) - use search tools to find real events. Search in English.
+경기 정보의 경우 유저에게 fixture_id도 반드시 말해주세요.
 2. User's prediction option (which team will win vs draw&lose, 현재는 승리 vs 무승부 및 패배 두 그룹으로 나눠진다.)
 3. Betting amount (in SOL) 반드시 유저에게 얼마를 베팅할 것인지 물어봐야 한다.
 
-유저에게 선택 옵션 혹은 베팅 금액 제시, 마켓생성을 할때, 아래의 툴을 반드시 선택해야 합니다.
-- dp_asking_options
-- set_bet_amount_dp_tool
-- create_market_dp_tool
-It will display appropriate FE UI elements to the user, which btn communicates actual blk server.
+If the user provides incomplete information, ask for clarification. 플로우는 다음과 같습니다. 
+1. 스포츠 정보를 검색 및 원하는 경기 찾기 (e.g. I found some Tottenham-related matches! Below is the main match information … Which match would you like to create a market for? 😊)
+2. dp_asking_options (e.g. You picked this match, huh? The game between Chelsea and Man City is really exciting, isn’t it? I’ve prepared two options. Which one will you choose?)
+3. dp_asking_bet_amount (e.g. You picked Man City to win. How much will you bet? The default is 1 sol.)
+4. create_market_dp_tool: 유저의 결정이 확정되면 사용
 
-If the user provides incomplete information, ask for clarification.
+경기 정보를 얻은 후 유저에게 질문을 할때, dp_asking_options, dp_asking_bet_amount, create_market_dp_tool 중 하나를 반드시 선택하세요.
+
 친구같은 친근한 말투를 사용하라. 
 
 SYSTEM_INFO: USER_ID = {user_id} , conversation_id: {conversation_id}
@@ -55,7 +57,7 @@ def create_agent(user_id: str, conversation_id: str):
     )
 
     # 도구 초기화 (동적 임포트로 순환 참조 방지)
-    from app.tools import create_market_dp_tool, dp_asking_options, set_bet_amount_dp_tool
+    from app.tools import create_market_dp_tool, dp_asking_options, dp_asking_bet_amount
     from app.tools.sports_tools import fixture_search_tool, league_search_tool, team_search_tool
 
     tools = [
@@ -64,7 +66,7 @@ def create_agent(user_id: str, conversation_id: str):
         fixture_search_tool,
         create_market_dp_tool,
         dp_asking_options,
-        set_bet_amount_dp_tool
+        dp_asking_bet_amount
     ]
 
     # 프롬프트 생성
@@ -156,7 +158,7 @@ def extract_tool_data(result_state: dict[str, Any]) -> tuple[MessageType, dict[s
                     data = content_data  # 직렬화된 데이터 직접 사용
                     logging.debug(f"Market options data: {data}")
 
-                elif tool_name == "set_bet_amount_dp_tool":
+                elif tool_name == "dp_asking_bet_amount":
                     message_type = MessageType.BETTING_AMOUNT_REQUEST
                     data = content_data
 
