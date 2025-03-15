@@ -2,7 +2,6 @@ import logging
 from typing import Any
 import json
 from datetime import datetime
-from enum import Enum
 
 from langchain_openai import ChatOpenAI
 from langgraph.prebuilt import create_react_agent
@@ -112,7 +111,7 @@ def extract_tool_data(result_state: dict[str, Any]) -> tuple[MessageType, dict[s
     if "messages" in result_state:
         from langchain_core.messages import ToolMessage
 
-        for msg in result_state["messages"]: # todo :: 거꾸로 탐색하고 break 시키기
+        for msg in reversed(result_state["messages"]):
             if isinstance(msg, ToolMessage):
                 tool_name = getattr(msg, "name", None)
                 tool_call_id = getattr(msg, "tool_call_id", None)
@@ -176,10 +175,8 @@ def extract_tool_data(result_state: dict[str, Any]) -> tuple[MessageType, dict[s
                         data = {"message": content_data.get("message", "Sports data retrieved")}
                     logging.debug(f"Sports data retrieved: {tool_name}")
 
-                # 한번 데이터 찾았으면 루프 종료
-                # if data is not None:
-                #     logging.debug(f"Extracted data: {data}")
-                #     break
+                # 한번 데이터 찾으면 루프 종료
+                break
 
     return message_type, data
 
