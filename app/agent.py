@@ -34,17 +34,16 @@ If the user provides incomplete information, ask for clarification. 플로우는
 1. 스포츠 정보를 검색 및 원하는 경기 찾기 (e.g. I found some Tottenham-related matches! Below is the main match information … Which match would you like to create a market for? 😊)
 2. dp_asking_options (e.g. You picked this match, huh? The game between Chelsea and Man City is really exciting, isn’t it? I’ve prepared two options. Which one will you choose?)
 3. dp_asking_bet_amount (e.g. You picked Man City to win. How much will you bet? The default is 1 sol.)
-4. create_market_dp_tool: 유저의 결정이 확정되면 사용
+4. dp_market_finalized: 유저가 원하는 정보가 모두 확보되면 사용
 
-경기 정보를 얻은 후 유저에게 질문을 할때, dp_asking_options, dp_asking_bet_amount, create_market_dp_tool 중 하나를 반드시 선택하세요.
+경기 정보를 얻은 후 유저에게 질문을 할때, dp_asking_options, dp_asking_bet_amount, dp_market_finalized 중 하나를 반드시 선택하세요.
 
 친구같은 친근한 말투를 사용하라. 
 
-SYSTEM_INFO: USER_ID = {user_id} , conversation_id: {conversation_id}
 Current Date (UTC): {current_datetime}, {current_day}
 """
 
-def create_agent(user_id: str, conversation_id: str):
+def create_agent():
     """
     ReAct 에이전트 생성 (create_react_agent 사용)
     """
@@ -57,14 +56,14 @@ def create_agent(user_id: str, conversation_id: str):
     )
 
     # 도구 초기화 (동적 임포트로 순환 참조 방지)
-    from app.tools import create_market_dp_tool, dp_asking_options, dp_asking_bet_amount
+    from app.tools import dp_market_finalized, dp_asking_options, dp_asking_bet_amount
     from app.tools.sports_tools import fixture_search_tool, league_search_tool, team_search_tool
 
     tools = [
         league_search_tool,
         team_search_tool,
         fixture_search_tool,
-        create_market_dp_tool,
+        dp_market_finalized,
         dp_asking_options,
         dp_asking_bet_amount
     ]
@@ -72,12 +71,9 @@ def create_agent(user_id: str, conversation_id: str):
     # 프롬프트 생성
     current_datetime = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     current_day = datetime.now().strftime("%A")
-    # todo:: user_id, conversation_id를 런타임 주입으로 변경(InjectedState)
     prompt = SYSTEM_PROMPT.format(
         current_datetime=current_datetime,
-        current_day=current_day,
-        user_id=user_id,
-        conversation_id=conversation_id
+        current_day=current_day
     )
 
     # create_react_agent 사용하여 에이전트 생성
@@ -162,7 +158,7 @@ def extract_tool_data(result_state: dict[str, Any]) -> tuple[MessageType, dict[s
                     message_type = MessageType.BETTING_AMOUNT_REQUEST
                     data = content_data
 
-                elif tool_name == "create_market_dp_tool":
+                elif tool_name == "dp_market_finalized":
                     message_type = MessageType.MARKET_FINALIZED
                     data = content_data
 
@@ -183,12 +179,11 @@ def extract_tool_data(result_state: dict[str, Any]) -> tuple[MessageType, dict[s
     return message_type, data
 
 
-async def process_message(user_id: str, message: str, conversation_id: str) -> dict[str, Any]:
+async def process_message(message: str, conversation_id: str) -> dict[str, Any]:
     """
     사용자 메시지 처리
 
     Args:
-        user_id: 사용자 ID
         message: 사용자 메시지
         conversation_id: 대화 ID
 
@@ -198,7 +193,7 @@ async def process_message(user_id: str, message: str, conversation_id: str) -> d
     from app.services.memory_service import get_memory_messages, save_message
 
     # 매번 새로운 에이전트 생성 (싱글톤 제거)
-    agent = create_agent(user_id, conversation_id)
+    agent = create_agent()
 
     # 기존 메시지 가져오기
     messages = get_memory_messages(conversation_id)
