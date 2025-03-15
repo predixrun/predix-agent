@@ -127,7 +127,7 @@ async def asking_bet_amount(
         logging.error(f"Error setting bet amount: {str(e)}")
         return {"error": str(e), "amount": amount, "selection": selection}
 
-async def create_market(
+async def market_finalized(
         user_id: str,
         fixture_id: int,
         home_team: str,
@@ -256,9 +256,9 @@ dp_asking_bet_amount = StructuredTool.from_function(
     coroutine=asking_bet_amount
 )
 
-create_market_dp_tool = StructuredTool.from_function(
-    func=create_market,
-    name="create_market_dp_tool",
-    description="Prepare data for displaying a prediction market card to the user. This tool only formats data for frontend display and does not interact with blockchain. Use this when the user wants to create a prediction market for a sports match.",
-    coroutine=create_market
+dp_market_finalized = StructuredTool.from_function(
+    func=market_finalized,
+    name="dp_market_finalized",
+    description="Display confirmed market informaion to the user. Be sure to obtain all necessary information from the user before using it.",
+    coroutine=market_finalized
 )
