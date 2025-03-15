@@ -1,9 +1,10 @@
 import logging
-from datetime import datetime
-
 from langchain.tools import StructuredTool
 
-from app.models.market import SelectionType, Market, Selection, Event, EventTeam, EventLeague, EventVenue, MarketPackage
+from app.services.sports_service import get_fixture_details
+from datetime import datetime
+
+from app.models.market import SelectionType, Selection
 
 async def asking_options(
     user_id: str,
@@ -18,17 +19,10 @@ async def asking_options(
         selections_data: list[Selection] 선택 옵션 데이터 (필수)
         fixture_id: 경기 ID (필수)
 
-        class Selection(BaseModel):
-            name: str
-            type: SelectionType
-            description: str | None = None
-
     Returns:
-        선택 결과
+        FE에 표시할 Options comp data
     """
     try:
-        from app.services.sports_service import get_fixture_details
-
         # 경기 정보 조회
         fixture_data = await get_fixture_details(fixture_id)
 
@@ -52,47 +46,53 @@ async def asking_options(
             venue_name = fixture_data["fixture"]["venue"].get("name", "Unknown Venue")
             venue_city = fixture_data["fixture"]["venue"].get("city", "Unknown City")
 
-        # 이벤트 데이터 생성
-        event_data = Event(
-            type="football_match",
-            fixture_id=fixture_id,
-            home_team=EventTeam(id=home_team_id, name=home_team_name),
-            away_team=EventTeam(id=away_team_id, name=away_team_name),
-            league=EventLeague(id=league_id, name=league_name, country=league_country),
-            start_time=datetime.fromisoformat(match_date.replace("Z", "+00:00")),
-            venue=EventVenue(name=venue_name, city=venue_city),
-        )
-
-        # 마켓 데이터 생성
-        title = f"{home_team_name} vs {away_team_name} Match Prediction"
-        description = (
-            f"Prediction market for the match between {home_team_name} and {away_team_name} on {event_data.start_time.strftime('%Y-%m-%d')}"
-        )
-
-        market_data = Market(
-            creator_id=user_id,
-            title=title,
-            description=description,
-            type="binary",
-            category="sports",
-            amount=1.0,  # 기본 금액
-            currency="SOL",
-            close_date=event_data.start_time,
-            created_at=datetime.now(),
-        )
-
-        # 마켓 패키지 생성
-        market_package = MarketPackage(market=market_data, selections=selections_data, event=event_data)
-
-        # 결과 반환
-        return {
-            "data": {
-                "market": market_package.market.model_dump(),
-                "selections": [s.model_dump() for s in market_package.selections],
-                "event": market_package.event.model_dump(),
+        # 직렬화 가능한 딕셔너리 생성(Enum 값 직접 설정)
+        serialized_data = {
+            "market": {
+                "creator_id": user_id,
+                "title": f"{home_team_name} vs {away_team_name} Match Prediction",
+                "description": f"Prediction market for the match between {home_team_name} and {away_team_name} on {match_date}",
+                "type": "binary",
+                "status": "draft",
+                "category": "sports",
+                "amount": 1.0,
+                "currency": "SOL",
+                "close_date": match_date,
+                "created_at": datetime.now().isoformat()
             },
-            "user_id": user_id,
+            "selections": [
+                {
+                    "name": selection.name,
+                    "type": selection.type.value,
+                    "description": selection.description
+                }
+                for selection in selections_data
+            ],
+            "event": {
+                "type": "football_match",
+                "fixture_id": fixture_id,
+                "home_team": {
+                    "id": home_team_id,
+                    "name": home_team_name
+                },
+                "away_team": {
+                    "id": away_team_id,
+                    "name": away_team_name
+                },
+                "league": {
+                    "id": league_id,
+                    "name": league_name,
+                    "country": league_country
+                },
+                "start_time": match_date,
+                "venue": {
+                    "name": venue_name,
+                    "city": venue_city
+                }
+            }
         }
+
+        return serialized_data
 
     except Exception as e:
         logging.error(f"Error selecting option: {str(e)}")
