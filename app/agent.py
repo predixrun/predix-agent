@@ -145,17 +145,17 @@ def extract_tool_data(result_state: dict[str, Any]) -> tuple[MessageType, dict[s
                 )
 
                 # 도구 유형에 따라 메시지 타입과 데이터 설정
-                if tool_name == "create_market_dp_tool":
+                if tool_name == "select_option_dp_tool":
                     message_type = MessageType.MARKET_OPTIONS
                     data = content_data
                     logging.info(f"Market options created: {tool_name}")
 
-                elif tool_name == "select_option_dp_tool":
+                elif tool_name == "set_bet_amount_dp_tool":
                     message_type = MessageType.BETTING_AMOUNT_REQUEST
                     data = content_data
                     logging.info(f"Betting amount requested: {tool_name}")
 
-                elif tool_name == "set_bet_amount_dp_tool":
+                elif tool_name == "create_market_dp_tool":
                     message_type = MessageType.MARKET_FINALIZED
                     data = content_data
                     logging.info(f"Market finalized: {tool_name}")
@@ -230,19 +230,19 @@ def extract_tool_data(result_state: dict[str, Any]) -> tuple[MessageType, dict[s
             )
 
             # 마켓 생성 도구
-            if tool_name == "create_market_dp_tool":
+            if tool_name == "select_option_dp_tool":
                 message_type = MessageType.MARKET_OPTIONS
                 data = observation
                 logging.info(f"Market options created from intermediate steps: {tool_name}")
 
             # 옵션 선택 도구
-            elif tool_name == "select_option_dp_tool":
+            elif tool_name == "set_bet_amount_dp_tool":
                 message_type = MessageType.BETTING_AMOUNT_REQUEST
                 data = observation
                 logging.info(f"Betting amount requested from intermediate steps: {tool_name}")
 
             # 베팅 금액 설정 도구
-            elif tool_name == "set_bet_amount_dp_tool":
+            elif tool_name == "create_market_dp_tool":
                 message_type = MessageType.MARKET_FINALIZED
                 data = observation
                 logging.info(f"Market finalized from intermediate steps: {tool_name}")
