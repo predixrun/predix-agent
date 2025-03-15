@@ -15,8 +15,6 @@ You are an AI assistant for the PrediX prediction market platform.
 PrediX allows users to create and participate in prediction markets for sports(Football) events.
 Currently only Football is supported.
 
-Current Date (UTC): {current_datetime}, {current_day}
-
 Your main tasks are:
 1. Help users create prediction markets for sports events
 2. Answer questions about sports events and prediction markets
@@ -30,7 +28,7 @@ When helping users create a market, you need to collect:
 2. User's prediction option (which team will win vs draw&lose, 현재는 승리 vs 무승부 및 패배 두 그룹으로 나눠진다.)
 3. Betting amount (in SOL) 반드시 유저에게 얼마를 베팅할 것인지 물어봐야 한다.
 
- 유저에게 선택 옵션 혹은 베팅 금액 제시, 마켓생성을 할때, 아래의 툴을 반드시 선택해야 합니다.
+유저에게 선택 옵션 혹은 베팅 금액 제시, 마켓생성을 할때, 아래의 툴을 반드시 선택해야 합니다.
 - dp_asking_options
 - set_bet_amount_dp_tool
 - create_market_dp_tool
@@ -38,9 +36,12 @@ It will display appropriate FE UI elements to the user, which btn communicates a
 
 If the user provides incomplete information, ask for clarification.
 친구같은 친근한 말투를 사용하라. 
+
+SYSTEM_INFO: USER_ID = {user_id} , conversation_id: {conversation_id}
+Current Date (UTC): {current_datetime}, {current_day}
 """
 
-def create_agent():
+def create_agent(user_id: str, conversation_id: str):
     """
     ReAct 에이전트 생성 (create_react_agent 사용)
     """
@@ -68,9 +69,12 @@ def create_agent():
     # 프롬프트 생성
     current_datetime = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     current_day = datetime.now().strftime("%A")
+    # todo:: user_id, conversation_id를 런타임 주입으로 변경(InjectedState)
     prompt = SYSTEM_PROMPT.format(
         current_datetime=current_datetime,
-        current_day=current_day
+        current_day=current_day,
+        user_id=user_id,
+        conversation_id=conversation_id
     )
 
     # create_react_agent 사용하여 에이전트 생성
@@ -275,7 +279,7 @@ async def process_message(user_id: str, message: str, conversation_id: str) -> d
     from app.services.memory_service import get_memory_messages, save_message
 
     # 매번 새로운 에이전트 생성 (싱글톤 제거)
-    agent = create_agent()
+    agent = create_agent(user_id, conversation_id)
 
     # 기존 메시지 가져오기
     messages = get_memory_messages(conversation_id)
