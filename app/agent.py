@@ -1,6 +1,8 @@
 import logging
-from datetime import datetime
 from typing import Any
+import json
+from datetime import datetime
+from enum import Enum
 
 from langchain_openai import ChatOpenAI
 from langgraph.prebuilt import create_react_agent
@@ -24,7 +26,7 @@ You DO NOT directly interact with blockchain or create actual markets - that's h
 Your tools format data that will be shown to users as cards or buttons in the frontend.
 
 When helping users create a market, you need to collect:
-1. Sports event information (teams, date) - use search tools to find real events. fixture_id도 괄호로 감싸고 알려주세요.
+1. Sports event information (teams, date) - use search tools to find real events. Search in English.
 2. User's prediction option (which team will win vs draw&lose, 현재는 승리 vs 무승부 및 패배 두 그룹으로 나눠진다.)
 3. Betting amount (in SOL) 반드시 유저에게 얼마를 베팅할 것인지 물어봐야 한다.
 
@@ -100,8 +102,6 @@ def extract_tool_data(result_state: dict[str, Any]) -> tuple[MessageType, dict[s
     Returns:
         메시지 타입과 데이터 튜플
     """
-    import json
-
     message_type = MessageType.TEXT
     data = None
 
@@ -112,7 +112,7 @@ def extract_tool_data(result_state: dict[str, Any]) -> tuple[MessageType, dict[s
     if "messages" in result_state:
         from langchain_core.messages import ToolMessage
 
-        for msg in result_state["messages"]:
+        for msg in result_state["messages"]: # todo :: 거꾸로 탐색하고 break 시키기
             if isinstance(msg, ToolMessage):
                 tool_name = getattr(msg, "name", None)
                 tool_call_id = getattr(msg, "tool_call_id", None)
@@ -131,19 +131,22 @@ def extract_tool_data(result_state: dict[str, Any]) -> tuple[MessageType, dict[s
                     try:
                         content_data = json.loads(content)
                     except (json.JSONDecodeError, TypeError):
-                        content_data = {"message": str(content)}
+                        content_data = str(content)
                 else:
                     content_data = content
 
-                # 도구 메시지 저장 (호출 ID가 없는 경우 생성)
-                if tool_call_id is None:
-                    tool_call_id = f"call_{tool_name}_{datetime.now().timestamp()}"
+                # JSON 문자열로 변환 (저장용)
+                try:
+                    content_string = json.dumps(content_data)
+                except Exception as e:
+                    logging.error(f"JSON serialization error: {e}")
+                    content_string = str(content_data)
 
                 # 도구 메시지 저장
                 save_tool_message(
                     conversation_id=result_state.get("configurable", {}).get("thread_id", "unknown"),
                     tool_call_id=tool_call_id,
-                    content=str(content),
+                    content=content_string,
                     status="success",
                     artifact=content_data,
                 )
@@ -151,18 +154,16 @@ def extract_tool_data(result_state: dict[str, Any]) -> tuple[MessageType, dict[s
                 # 도구 유형에 따라 메시지 타입과 데이터 설정
                 if tool_name == "dp_asking_options":
                     message_type = MessageType.MARKET_OPTIONS
-                    data = content_data
-                    logging.info(f"Market options created: {tool_name}")
+                    data = content_data  # 직렬화된 데이터 직접 사용
+                    logging.debug(f"Market options data: {data}")
 
                 elif tool_name == "set_bet_amount_dp_tool":
                     message_type = MessageType.BETTING_AMOUNT_REQUEST
                     data = content_data
-                    logging.info(f"Betting amount requested: {tool_name}")
 
                 elif tool_name == "create_market_dp_tool":
                     message_type = MessageType.MARKET_FINALIZED
                     data = content_data
-                    logging.info(f"Market finalized: {tool_name}")
 
                 elif tool_name in ["league_search", "team_search", "fixture_search"]:
                     message_type = MessageType.SPORTS_SEARCH
@@ -173,11 +174,12 @@ def extract_tool_data(result_state: dict[str, Any]) -> tuple[MessageType, dict[s
                         data = content_data
                     else:
                         data = {"message": content_data.get("message", "Sports data retrieved")}
-                    logging.info(f"Sports data retrieved: {tool_name}")
+                    logging.debug(f"Sports data retrieved: {tool_name}")
 
-                # 메시지 타입이 변경되었으면 더 이상 도구 메시지를 처리하지 않음
-                if message_type != MessageType.TEXT:
-                    return message_type, data
+                # 한번 데이터 찾았으면 루프 종료
+                # if data is not None:
+                #     logging.debug(f"Extracted data: {data}")
+                #     break
 
     return message_type, data
 
@@ -216,7 +218,7 @@ async def process_message(user_id: str, message: str, conversation_id: str) -> d
             }
         }
 
-        logging.info(f"Invoking agent with message: {message}")
+        logging.debug(f"Invoking agent with message: {message}")
 
         # 에이전트 실행
         result = await agent.ainvoke(
@@ -248,10 +250,9 @@ async def process_message(user_id: str, message: str, conversation_id: str) -> d
                     artifact = None
                     if isinstance(content, str):
                         try:
-                            import json
                             artifact = json.loads(content)
                         except (json.JSONDecodeError, TypeError):
-                            artifact = {"message": content}
+                            artifact = content
                     else:
                         artifact = content
 
@@ -266,9 +267,7 @@ async def process_message(user_id: str, message: str, conversation_id: str) -> d
 
         # 도구 실행 결과에서 메시지 타입과 데이터 추출
         message_type, data = extract_tool_data(result)
-
-        # 디버깅 로그 추가
-        logging.info(f"Extracted message_type: {message_type}, data available: {data is not None}")
+        logging.debug(f"Extracted message_type: {message_type}, data available: {data is not None}")
 
         # 응답 생성
         return {
