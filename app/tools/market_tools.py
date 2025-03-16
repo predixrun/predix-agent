@@ -6,6 +6,53 @@ from datetime import datetime
 
 from app.models.market import Selection
 
+async def get_formatted_fixture_data(fixture_id: int) -> dict:
+    """
+    경기 ID로 경기 정보를 조회하고 포맷팅하는 헬퍼 함수
+    
+    Args:
+        fixture_id: 경기 ID
+        
+    Returns:
+        포맷팅된 경기 정보 딕셔너리
+    """
+    # 경기 정보 조회
+    fixture_data = await get_fixture_details(fixture_id)
+
+    if not fixture_data:
+        raise ValueError(f"Could not find fixture with ID: {fixture_id}")
+
+    # 경기 정보에서 필요한 데이터 추출
+    home_team_id = fixture_data["teams"]["home"]["id"]
+    home_team_name = fixture_data["teams"]["home"]["name"]
+    away_team_id = fixture_data["teams"]["away"]["id"]
+    away_team_name = fixture_data["teams"]["away"]["name"]
+    league_id = fixture_data["league"]["id"]
+    league_name = fixture_data["league"]["name"]
+    league_country = fixture_data["league"]["country"]
+    match_date = fixture_data["fixture"]["date"]
+
+    # 경기장 정보 가져오기
+    venue_name = "Unknown Venue"
+    venue_city = "Unknown City"
+    if "venue" in fixture_data["fixture"] and fixture_data["fixture"]["venue"]:
+        venue_name = fixture_data["fixture"]["venue"].get("name", "Unknown Venue")
+        venue_city = fixture_data["fixture"]["venue"].get("city", "Unknown City")
+    
+    return {
+        "home_team_id": home_team_id,
+        "home_team_name": home_team_name,
+        "away_team_id": away_team_id,
+        "away_team_name": away_team_name,
+        "league_id": league_id,
+        "league_name": league_name,
+        "league_country": league_country,
+        "match_date": match_date,
+        "venue_name": venue_name,
+        "venue_city": venue_city,
+        "fixture_id": fixture_id
+    }
+
 async def asking_options(
     selections_data: list[Selection],
     fixture_id: int,
@@ -21,40 +68,20 @@ async def asking_options(
         FE에 표시할 Options comp data
     """
     try:
-        # 경기 정보 조회
-        fixture_data = await get_fixture_details(fixture_id)
-
-        if not fixture_data:
-            raise ValueError(f"Could not find fixture with ID: {fixture_id}")
-
-        # 경기 정보에서 필요한 데이터 추출
-        home_team_id = fixture_data["teams"]["home"]["id"]
-        home_team_name = fixture_data["teams"]["home"]["name"]
-        away_team_id = fixture_data["teams"]["away"]["id"]
-        away_team_name = fixture_data["teams"]["away"]["name"]
-        league_id = fixture_data["league"]["id"]
-        league_name = fixture_data["league"]["name"]
-        league_country = fixture_data["league"]["country"]
-        match_date = fixture_data["fixture"]["date"]
-
-        # 경기장 정보 가져오기
-        venue_name = "Unknown Venue"
-        venue_city = "Unknown City"
-        if "venue" in fixture_data["fixture"] and fixture_data["fixture"]["venue"]:
-            venue_name = fixture_data["fixture"]["venue"].get("name", "Unknown Venue")
-            venue_city = fixture_data["fixture"]["venue"].get("city", "Unknown City")
-
+        # 공통 함수를 사용하여 경기 정보 가져오기
+        fixture_info = await get_formatted_fixture_data(fixture_id)
+        
         # 직렬화 가능한 딕셔너리 생성(Enum 값 직접 설정)
         serialized_data = {
             "market": {
-                "title": f"{home_team_name} vs {away_team_name} Match Prediction",
-                "description": f"Prediction market for the match between {home_team_name} and {away_team_name} on {match_date}",
+                "title": f"{fixture_info['home_team_name']} vs {fixture_info['away_team_name']} Match Prediction",
+                "description": f"Prediction market for the match between {fixture_info['home_team_name']} and {fixture_info['away_team_name']} on {fixture_info['match_date']}",
                 "type": "binary",
                 "status": "draft",
                 "category": "sports",
                 "amount": 1.0,
                 "currency": "SOL",
-                "close_date": match_date,
+                "close_date": fixture_info['match_date'],
                 "created_at": datetime.now().isoformat()
             },
             "selections": [
@@ -69,22 +96,22 @@ async def asking_options(
                 "type": "football_match",
                 "fixture_id": fixture_id,
                 "home_team": {
-                    "id": home_team_id,
-                    "name": home_team_name
+                    "id": fixture_info['home_team_id'],
+                    "name": fixture_info['home_team_name']
                 },
                 "away_team": {
-                    "id": away_team_id,
-                    "name": away_team_name
+                    "id": fixture_info['away_team_id'],
+                    "name": fixture_info['away_team_name']
                 },
                 "league": {
-                    "id": league_id,
-                    "name": league_name,
-                    "country": league_country
+                    "id": fixture_info['league_id'],
+                    "name": fixture_info['league_name'],
+                    "country": fixture_info['league_country']
                 },
-                "start_time": match_date,
+                "start_time": fixture_info['match_date'],
                 "venue": {
-                    "name": venue_name,
-                    "city": venue_city
+                    "name": fixture_info['venue_name'],
+                    "city": fixture_info['venue_city']
                 }
             }
         }
@@ -146,40 +173,20 @@ async def market_finalized(
     """
 
     try:
-        # 경기 정보 조회
-        fixture_data = await get_fixture_details(fixture_id)
-
-        if not fixture_data:
-            raise ValueError(f"Could not find fixture with ID: {fixture_id}")
-
-        # 경기 정보에서 필요한 데이터 추출
-        home_team_id = fixture_data["teams"]["home"]["id"]
-        home_team_name = fixture_data["teams"]["home"]["name"]
-        away_team_id = fixture_data["teams"]["away"]["id"]
-        away_team_name = fixture_data["teams"]["away"]["name"]
-        league_id = fixture_data["league"]["id"]
-        league_name = fixture_data["league"]["name"]
-        league_country = fixture_data["league"]["country"]
-        match_date = fixture_data["fixture"]["date"]
-
-        # 경기장 정보 가져오기
-        venue_name = "Unknown Venue"
-        venue_city = "Unknown City"
-        if "venue" in fixture_data["fixture"] and fixture_data["fixture"]["venue"]:
-            venue_name = fixture_data["fixture"]["venue"].get("name", "Unknown Venue")
-            venue_city = fixture_data["fixture"]["venue"].get("city", "Unknown City")
-
+        # 공통 함수를 사용하여 경기 정보 가져오기
+        fixture_info = await get_formatted_fixture_data(fixture_id)
+        
         # 직렬화 가능한 딕셔너리 생성(Enum 값 직접 설정)
         data = {
             "market": {
-                "title": f"{home_team_name} vs {away_team_name} Match Prediction",
-                "description": f"Prediction market for the match between {home_team_name} and {away_team_name} on {match_date}",
+                "title": f"{fixture_info['home_team_name']} vs {fixture_info['away_team_name']} Match Prediction",
+                "description": f"Prediction market for the match between {fixture_info['home_team_name']} and {fixture_info['away_team_name']} on {fixture_info['match_date']}",
                 "type": "binary",
                 "status": "draft",
                 "category": "sports",
                 "amount": amount,
                 "currency": currency,
-                "close_date": match_date,
+                "close_date": fixture_info['match_date'],
                 "created_at": datetime.now().isoformat(),
             },
             "selections": [
@@ -191,15 +198,14 @@ async def market_finalized(
             "event": {
                 "type": "football_match",
                 "fixture_id": fixture_id,
-                "home_team": {"id": home_team_id, "name": home_team_name},
-                "away_team": {"id": away_team_id, "name": away_team_name},
-                "league": {"id": league_id, "name": league_name, "country": league_country},
-                "start_time": match_date,
-                "venue": {"name": venue_name, "city": venue_city},
+                "home_team": {"id": fixture_info['home_team_id'], "name": fixture_info['home_team_name']},
+                "away_team": {"id": fixture_info['away_team_id'], "name": fixture_info['away_team_name']},
+                "league": {"id": fixture_info['league_id'], "name": fixture_info['league_name'], "country": fixture_info['league_country']},
+                "start_time": fixture_info['match_date'],
+                "venue": {"name": fixture_info['venue_name'], "city": fixture_info['venue_city']},
             },
         }
         return data
-
 
     except Exception as e:
         logging.error(f"Error selecting option: {str(e)}")
