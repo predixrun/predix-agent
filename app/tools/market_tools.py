@@ -1,361 +1,235 @@
-import json
-import re
-from datetime import datetime
-from typing import Any
-
+import logging
 from langchain.tools import StructuredTool
-from langchain_core.messages import SystemMessage
-from langchain_openai import ChatOpenAI
 
-from app.config import logger, settings
-from app.services.sports_service import get_fixtures, search_teams
+from app.services.sports_service import get_fixture_details
+from datetime import datetime
 
-MARKET_CREATION_PROMPT = """
-You are creating a prediction market based on the user's request.
-Extract the relevant details from the conversation and create a market with appropriate options.
+from app.models.market import Selection
 
-For sports markets:
-- Identify the teams or events involved
-- Set clear prediction options (win/lose or draw)
-- Consider the betting amount mentioned
-
-Create a concise title and description for the market.
-"""
-
-
-async def extract_market_details(
-        message: str
-) -> dict[str, Any]:
+async def get_formatted_fixture_data(fixture_id: int) -> dict:
     """
-    Extract market creation details from a user message.
+    경기 ID로 경기 정보를 조회하고 포맷팅하는 헬퍼 함수
+    
+    Args:
+        fixture_id: 경기 ID
+        
+    Returns:
+        포맷팅된 경기 정보 딕셔너리
+    """
+    # 경기 정보 조회
+    fixture_data = await get_fixture_details(fixture_id)
+
+    if not fixture_data:
+        raise ValueError(f"Could not find fixture with ID: {fixture_id}")
+
+    # 경기 정보에서 필요한 데이터 추출
+    home_team_id = fixture_data["teams"]["home"]["id"]
+    home_team_name = fixture_data["teams"]["home"]["name"]
+    away_team_id = fixture_data["teams"]["away"]["id"]
+    away_team_name = fixture_data["teams"]["away"]["name"]
+    league_id = fixture_data["league"]["id"]
+    league_name = fixture_data["league"]["name"]
+    league_country = fixture_data["league"]["country"]
+    match_date = fixture_data["fixture"]["date"]
+
+    # 경기장 정보 가져오기
+    venue_name = "Unknown Venue"
+    venue_city = "Unknown City"
+    if "venue" in fixture_data["fixture"] and fixture_data["fixture"]["venue"]:
+        venue_name = fixture_data["fixture"]["venue"].get("name", "Unknown Venue")
+        venue_city = fixture_data["fixture"]["venue"].get("city", "Unknown City")
+    
+    return {
+        "home_team_id": home_team_id,
+        "home_team_name": home_team_name,
+        "away_team_id": away_team_id,
+        "away_team_name": away_team_name,
+        "league_id": league_id,
+        "league_name": league_name,
+        "league_country": league_country,
+        "match_date": match_date,
+        "venue_name": venue_name,
+        "venue_city": venue_city,
+        "fixture_id": fixture_id
+    }
+
+async def asking_options(
+    selections_data: list[Selection],
+    fixture_id: int,
+) -> dict:
+    """
+    마켓 옵션 선택 도구
 
     Args:
-        message: User message content
+        selections_data: list[Selection] 선택 옵션 데이터
+        fixture_id: 경기 ID
 
     Returns:
-        Dictionary with market creation details
+        FE에 표시할 Options comp data
     """
-    logger.info(f"Extracting market details from: {message[:50]}...")
+    try:
+        # 공통 함수를 사용하여 경기 정보 가져오기
+        fixture_info = await get_formatted_fixture_data(fixture_id)
+        
+        # 직렬화 가능한 딕셔너리 생성(Enum 값 직접 설정)
+        serialized_data = {
+            "market": {
+                "title": f"{fixture_info['home_team_name']} vs {fixture_info['away_team_name']} Match Prediction",
+                "description": f"Prediction market for the match between {fixture_info['home_team_name']} and {fixture_info['away_team_name']} on {fixture_info['match_date']}",
+                "type": "binary",
+                "status": "draft",
+                "category": "sports",
+                "amount": 1.0,
+                "currency": "SOL",
+                "close_date": fixture_info['match_date'],
+                "created_at": datetime.now().isoformat()
+            },
+            "selections": [
+                {
+                    "name": selection.name,
+                    "type": selection.type.value,
+                    "description": selection.description
+                }
+                for selection in selections_data
+            ],
+            "event": {
+                "type": "football_match",
+                "fixture_id": fixture_id,
+                "home_team": {
+                    "id": fixture_info['home_team_id'],
+                    "name": fixture_info['home_team_name']
+                },
+                "away_team": {
+                    "id": fixture_info['away_team_id'],
+                    "name": fixture_info['away_team_name']
+                },
+                "league": {
+                    "id": fixture_info['league_id'],
+                    "name": fixture_info['league_name'],
+                    "country": fixture_info['league_country']
+                },
+                "start_time": fixture_info['match_date'],
+                "venue": {
+                    "name": fixture_info['venue_name'],
+                    "city": fixture_info['venue_city']
+                }
+            }
+        }
 
-    # Initialize LLM
-    llm = ChatOpenAI(
-        model="chatgpt-4o-latest",
-        temperature=0.1,
-        api_key=settings.OPENAI_API_KEY
-    )
+        return serialized_data
 
-    # Market detail extraction system prompt
-    market_prompt = [
-        SystemMessage(content="""Extract market creation details from the user's message.
+    except Exception as e:
+        logging.error(f"Error selecting option: {str(e)}")
+        return {"error": str(e)}
 
-For sports markets, identify:
-1. Teams involved
-2. Event/match date
-3. Betting amount
-4. Type of prediction (who will win, etc.)
 
-Format your response as JSON:
-{
-    "teams": ["Team A", "Team B"],
-    "event_date": "YYYY-MM-DD" or "this Sunday" or null if not specified,
-    "bet_amount": number (in SOL),
-    "prediction_type": "match_winner" or other relevant type
-}"""),
-        {"role": "user", "content": message}
-    ]
+async def asking_bet_amount(
+    selection: str,
+    amount: float,
+    currency: str = "SOL",
+) -> dict:
+    """
+    베팅 금액 질의 도구
+
+    Args:
+        selection: 선택한 옵션
+        amount: 베팅 금액
+        currency: 토큰 (기본값: SOL)
+
+    Returns:
+        FE에 표시할 베팅 금액 data
+    """
 
     try:
-        market_result = await llm.ainvoke(market_prompt)
-        market_content = market_result.content
-
-        # Extract JSON from response
-        json_str = re.search(r'({.*})', market_content.replace('\n', ' '), re.DOTALL)
-
-        if json_str:
-            try:
-                market_info = json.loads(json_str.group(1))
-                return market_info
-            except json.JSONDecodeError:
-                logger.error("Failed to parse JSON from market details extraction")
-
-        # Default values if parsing fails
         return {
-            "teams": [],
-            "event_date": None,
-            "bet_amount": 1.0,
-            "prediction_type": "match_winner"
+            "selected_option": selection,
+            "initial_amount": amount,
+            "currency": currency
         }
 
     except Exception as e:
-        logger.error(f"Error extracting market details: {e}")
-        return {
-            "teams": [],
-            "event_date": None,
-            "bet_amount": 1.0,
-            "prediction_type": "match_winner"
-        }
+        logging.error(f"Error setting bet amount: {str(e)}")
+        return {"error": str(e), "amount": amount, "selection": selection}
 
-
-async def create_prediction_market(
-        message: str,
-        user_id: str,
-) -> dict[str, Any]:
+async def market_finalized(
+        fixture_id: int,
+        selections_data: list[Selection],
+        selected_type: str,
+        amount: float,
+        currency: str,
+) -> dict:
     """
-    Create a prediction market based on a user message.
+    예측 마켓 생성 도구
 
     Args:
-        message: User message content
-        user_id: ID of the user creating the market
+        fixture_id: 경기 ID
+        selections_data: list[Selection] 선택 옵션 데이터
+        selected_type: 선택한 옵션 ("win", "draw_lose")
+        amount: 베팅 금액
+        currency: 토큰
 
     Returns:
-        Dictionary with market data and assistant response
+        Finalized Market Info
     """
-    logger.info(f"Creating prediction market for user {user_id}: {message[:50]}...")
 
-    # Extract market details
-    market_info = await extract_market_details(message)
-
-    # Get actual sports data
-    teams_data = []
-    fixtures_data = []
-
-    for team_name in market_info.get("teams", []):
-        if team_name:
-            team_results = await search_teams(team_name)
-            teams_data.extend(team_results)
-
-    # Extract team IDs
-    team_ids = [team["team"]["id"] for team in teams_data]
-
-    # Get upcoming fixtures for these teams
-    if team_ids:
-        for team_id in team_ids:
-            fixtures = await get_fixtures(team_id=team_id, upcoming=True)
-            fixtures_data.extend(fixtures)
-
-    # Find a fixture that matches the teams
-    target_fixture = None
-
-    if len(team_ids) >= 2 and fixtures_data:
-        for fixture in fixtures_data:
-            home_id = fixture["teams"]["home"]["id"]
-            away_id = fixture["teams"]["away"]["id"]
-
-            if home_id in team_ids and away_id in team_ids:
-                target_fixture = fixture
-                break
-
-    # If we don't have a specific fixture but have teams, use the first fixture for one of the teams
-    if not target_fixture and team_ids and fixtures_data:
-        target_fixture = fixtures_data[0]
-
-    # If we don't have any team data, use a default fixture
-    if not target_fixture:
-        fixtures = await get_fixtures(upcoming=True)
-        if fixtures:
-            target_fixture = fixtures[0]
-
-    # Generate market details
-    bet_amount_value = market_info.get("bet_amount", 1.0)
-    bet_amount = float(bet_amount_value) if bet_amount_value is not None else 1.0
-
-    if target_fixture:
-        home_team = target_fixture["teams"]["home"]["name"]
-        away_team = target_fixture["teams"]["away"]["name"]
-        match_date = target_fixture["fixture"]["date"]
-        fixture_id = target_fixture["fixture"]["id"]
-
-        title = f"{home_team} vs {away_team} Match Prediction"
-        description = f"Prediction market for the match between {home_team} and {away_team} on {match_date}"
-
-        # Create selections based on home team
-        selections = [
-            {
-                "name": f"{home_team} Win",
-                "type": "win",
-                "description": f"{home_team} will win the match"
+    try:
+        # 공통 함수를 사용하여 경기 정보 가져오기
+        fixture_info = await get_formatted_fixture_data(fixture_id)
+        
+        # 직렬화 가능한 딕셔너리 생성(Enum 값 직접 설정)
+        data = {
+            "market": {
+                "title": f"{fixture_info['home_team_name']} vs {fixture_info['away_team_name']} Match Prediction",
+                "description": f"Prediction market for the match between {fixture_info['home_team_name']} and {fixture_info['away_team_name']} on {fixture_info['match_date']}",
+                "type": "binary",
+                "status": "draft",
+                "category": "sports",
+                "amount": amount,
+                "currency": currency,
+                "close_date": fixture_info['match_date'],
+                "created_at": datetime.now().isoformat(),
             },
-            {
-                "name": f"{home_team} Draw/Lose",
-                "type": "draw_lose",
-                "description": f"{home_team} will draw or lose the match"
-            }
-        ]
+            "selections": [
+                {"name": selection.name, "type": selection.type.value, "description": selection.description}
+                for selection in selections_data
+            ],
+            "selected_type": selected_type,
 
-        # Create market data structure
-        market_data = {
-            "creator_id": user_id,
-            "title": title,
-            "description": description,
-            "type": "binary",
-            "category": "sports",
-            "amount": bet_amount,
-            "currency": "SOL",
-            "close_date": match_date,
-            "created_at": datetime.now().isoformat()
+            "event": {
+                "type": "football_match",
+                "fixture_id": fixture_id,
+                "home_team": {"id": fixture_info['home_team_id'], "name": fixture_info['home_team_name']},
+                "away_team": {"id": fixture_info['away_team_id'], "name": fixture_info['away_team_name']},
+                "league": {"id": fixture_info['league_id'], "name": fixture_info['league_name'], "country": fixture_info['league_country']},
+                "start_time": fixture_info['match_date'],
+                "venue": {"name": fixture_info['venue_name'], "city": fixture_info['venue_city']},
+            },
         }
+        return data
 
-        # Create selections data
-        selections_data = selections
-
-        # Create event details
-        event_data = {
-            "type": "football_match",
-            "fixture_id": fixture_id,
-            "home_team": {
-                "id": target_fixture["teams"]["home"]["id"],
-                "name": home_team
-            },
-            "away_team": {
-                "id": target_fixture["teams"]["away"]["id"],
-                "name": away_team
-            },
-            "league": {
-                "id": target_fixture["league"]["id"],
-                "name": target_fixture["league"]["name"],
-                "country": target_fixture["league"]["country"]
-            },
-            "start_time": match_date,
-            "venue": {
-                "name": target_fixture["fixture"].get("venue", {}).get("name", ""),
-                "city": target_fixture["fixture"].get("venue", {}).get("city", "")
-            }
-        }
-    else:
-        # Generic fallback
-        title = "Sports Prediction Market"
-        description = "Prediction market for an upcoming sports event"
-
-        team_names = market_info.get("teams", ["Team A", "Team B"])
-        team_a = team_names[0] if len(team_names) > 0 else "Team A"
-
-        selections = [
-            {
-                "name": f"{team_a} Win",
-                "type": "win",
-                "description": f"{team_a} will win"
-            },
-            {
-                "name": f"{team_a} Draw/Lose",
-                "type": "draw_lose",
-                "description": f"{team_a} will draw or lose"
-            }
-        ]
-
-        # Create market data structure
-        market_data = {
-            "creator_id": user_id,
-            "title": title,
-            "description": description,
-            "type": "binary",
-            "category": "sports",
-            "amount": bet_amount,
-            "currency": "SOL",
-            "close_date": datetime.now().isoformat(),
-            "created_at": datetime.now().isoformat()
-        }
-
-        # Create selections data
-        selections_data = selections
-
-        # Create event details
-        event_data = {
-            "type": "football_match",
-            "fixture_id": 0,
-            "home_team": {
-                "id": 0,
-                "name": team_a
-            },
-            "away_team": {
-                "id": 0,
-                "name": team_names[1] if len(team_names) > 1 else "Team B"
-            },
-            "league": {
-                "id": 0,
-                "name": "Unknown League",
-                "country": "Unknown"
-            },
-            "start_time": datetime.now().isoformat(),
-            "venue": {
-                "name": "Unknown Venue",
-                "city": "Unknown City"
-            }
-        }
-
-    # Prepare the full market info package for USER BE
-    market_package = {
-        "market": market_data,
-        "selections": selections_data,
-        "event": event_data
-    }
-
-    # Create response message
-    from app.models.chat import Message
-    response_message = Message(
-        role="assistant",
-        content=f"I've created a prediction market: '{title}'. Please select one of the options."
-    )
-
-    return {
-        "messages": [response_message],
-        "title": title,
-        "description": description,
-        "status": "draft",
-        "selections": selections,
-        "bet_amount": bet_amount,
-        "context": {
-            "user_id": user_id,
-            "market_package": market_package
-        }
-    }
+    except Exception as e:
+        logging.error(f"Error selecting option: {str(e)}")
+        return {"error": str(e)}
 
 
-async def process_market_selection(
-        selected_option: str,
-        bet_amount: float = 1.0
-) -> dict[str, Any]:
-    """
-    Process a user's selection of a market option.
-
-    Args:
-        selected_option: The option selected by the user
-        bet_amount: The amount to bet
-
-    Returns:
-        Dictionary with response message
-    """
-    logger.info(f"Processing market selection: {selected_option} with amount {bet_amount}")
-
-    from app.models.chat import Message
-    if not selected_option:
-        return {
-            "messages": [
-                Message(role="assistant", content="I couldn't understand your selection. Please try again.")
-            ]
-        }
-
-    # Create betting amount request message
-    response_message = Message(
-        role="assistant",
-        content=f"You've selected {selected_option} and the wager is {bet_amount} SOL. Proceed?"
-    )
-
-    return {
-        "messages": [response_message]
-    }
-
-
-# Create tools
-create_market_tool = StructuredTool.from_function(
-    func=create_prediction_market,
-    name="create_prediction_market",
-    description="Create a prediction market based on a user message",
-    coroutine=create_prediction_market
+# 도구 생성
+dp_asking_options = StructuredTool.from_function(
+    func=asking_options,
+    name="dp_asking_options",
+    description="Generates selectable options displayed in FE based on the game content. The returned values from this tool determine the options available for the user.",
+    coroutine=asking_options
 )
 
-process_selection_tool = StructuredTool.from_function(
-    func=process_market_selection,
-    name="process_market_selection",
-    description="Process a user's selection of a market option",
-    coroutine=process_market_selection
+dp_asking_bet_amount = StructuredTool.from_function(
+    func=asking_bet_amount,
+    name="dp_asking_bet_amount",
+    description="Choose this tool when asking the user for the bet amount. It returns data for rendering the component in the FE.",
+    coroutine=asking_bet_amount
+)
+
+dp_market_finalized = StructuredTool.from_function(
+    func=market_finalized,
+    name="dp_market_finalized",
+    description="Display confirmed market informaion to the user. Be sure to obtain all necessary information from the user before using it.",
+    coroutine=market_finalized
 )

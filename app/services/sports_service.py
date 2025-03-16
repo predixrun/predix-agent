@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime, timedelta
 from typing import Any
 
@@ -5,7 +6,7 @@ import httpx
 import pytz
 from dateutil import parser
 
-from app.config import logger, settings
+from app.config import settings
 
 # API Configuration
 API_BASE_URL = "https://v3.football.api-sports.io"
@@ -24,7 +25,7 @@ async def search_teams(query: str) -> list[dict[str, Any]]:
     Returns:
         List of matching teams
     """
-    logger.info(f"Searching for teams with query: {query}")
+    # logging.info(f"Searching for teams with query: {query}")
 
     try:
         async with httpx.AsyncClient() as client:
@@ -36,13 +37,13 @@ async def search_teams(query: str) -> list[dict[str, Any]]:
 
             if response.status_code == 200:
                 data = response.json()
-                logger.info(f"Found {data.get('results', 0)} teams matching '{query}'")
+                # logging.info(f"Found {data.get('results', 0)} teams matching '{query}'")
                 return data.get("response", [])
             else:
-                logger.error(f"API error searching teams: {response.status_code} - {response.text}")
+                logging.error(f"API error searching teams: {response.status_code} - {response.text}")
                 return []
     except Exception as e:
-        logger.error(f"Error searching teams: {e}")
+        logging.error(f"Error searching teams: {e}")
         return []
 
 
@@ -71,10 +72,10 @@ async def get_fixtures(
         List of fixtures
     """
     # Prepare parameters
-    params = {"timezone": "UTC"}  # Use UTC timezone
+    params = {"timezone": "UTC", "season": 2024}  # Use UTC timezone
 
     if fixture_id:
-        logger.info(f"Getting fixture with ID: {fixture_id}")
+        # logging.info(f"Getting fixture with ID: {fixture_id}")
         params["id"] = fixture_id
     else:
         # For upcoming/past fixtures when no specific date is provided
@@ -86,34 +87,34 @@ async def get_fixtures(
                 # For upcoming matches, use next 7 days
                 params["from"] = today.strftime("%Y-%m-%d")
                 params["to"] = (today + timedelta(days=7)).strftime("%Y-%m-%d")
-                logger.info(f"Getting upcoming fixtures from {params['from']} to {params['to']}")
+                # logging.info(f"Getting upcoming fixtures from {params['from']} to {params['to']}")
             else:
                 # For past matches, use last 7 days
                 params["from"] = (today - timedelta(days=7)).strftime("%Y-%m-%d")
                 params["to"] = today.strftime("%Y-%m-%d")
-                logger.info(f"Getting past fixtures from {params['from']} to {params['to']}")
+                # logging.info(f"Getting past fixtures from {params['from']} to {params['to']}")
 
         # Add specific date if provided
         if date:
-            logger.info(f"Getting fixtures for date: {date}")
+            # logging.info(f"Getting fixtures for date: {date}")
             params["date"] = date
 
         # Add date range if provided
         if from_date:
-            logger.info(f"Getting fixtures from date: {from_date}")
+            # logging.info(f"Getting fixtures from date: {from_date}")
             params["from"] = from_date
         if to_date:
-            logger.info(f"Getting fixtures to date: {to_date}")
+            # logging.info(f"Getting fixtures to date: {to_date}")
             params["to"] = to_date
 
         # Add team ID if provided
         if team_id:
-            logger.info(f"Getting fixtures for team ID: {team_id}")
+            # logging.info(f"Getting fixtures for team ID: {team_id}")
             params["team"] = team_id
 
         # Add league ID if provided
         if league_id:
-            logger.info(f"Getting fixtures for league ID: {league_id}")
+            # logging.info(f"Getting fixtures for league ID: {league_id}")
             params["league"] = league_id
 
     try:
@@ -127,7 +128,7 @@ async def get_fixtures(
             if response.status_code == 200:
                 data = response.json()
                 fixtures = data.get("response", [])
-                logger.info(f"Found {len(fixtures)} fixtures matching criteria")
+                # logging.info(f"Found {len(fixtures)} fixtures matching criteria")
 
                 # Return filtered results based on upcoming flag if not using fixture_id
                 if not fixture_id and fixtures:
@@ -148,10 +149,10 @@ async def get_fixtures(
 
                 return fixtures
             else:
-                logger.error(f"API error getting fixtures: {response.status_code} - {response.text}")
+                logging.error(f"API error getting fixtures: {response.status_code} - {response.text}")
                 return []
     except Exception as e:
-        logger.error(f"Error getting fixtures: {e}")
+        logging.error(f"Error getting fixtures: {e}")
         return []
 
 
@@ -171,7 +172,7 @@ async def get_leagues(
     Returns:
         List of leagues
     """
-    logger.info(f"Getting leagues with filters - country: {country}, search: {search}, id: {league_id}")
+    # logging.info(f"Getting leagues with filters - country: {country}, search: {search}, id: {league_id}")
 
     params = {}
     if country:
@@ -192,14 +193,35 @@ async def get_leagues(
             if response.status_code == 200:
                 data = response.json()
                 leagues = data.get("response", [])
-                logger.info(f"Found {len(leagues)} leagues matching criteria")
+                # logging.info(f"Found {len(leagues)} leagues matching criteria")
                 return leagues
             else:
-                logger.error(f"API error getting leagues: {response.status_code} - {response.text}")
+                logging.error(f"API error getting leagues: {response.status_code} - {response.text}")
                 return []
     except Exception as e:
-        logger.error(f"Error getting leagues: {e}")
+        logging.error(f"Error getting leagues: {e}")
         return []
+
+
+async def get_fixture_details(fixture_id: int) -> dict[str, Any]:
+    """
+    특정 fixture ID로 경기 상세 정보를 조회합니다.
+
+    Args:
+        fixture_id: 조회할 경기 ID
+
+    Returns:
+        경기 상세 정보 또는 찾을 수 없는 경우 빈 딕셔너리
+    """
+    logging.info(f"Getting fixture details for ID: {fixture_id}")
+    fixtures = await get_fixtures(fixture_id=fixture_id)
+
+    if not fixtures or len(fixtures) == 0:
+        logging.error(f"No fixture found with ID: {fixture_id}")
+        return {}
+
+    # 첫 번째(유일한) 경기 정보 반환
+    return fixtures[0]
 
 
 def preprocess_sports_data(sports_data: dict[str, list]) -> dict[str, list]:
