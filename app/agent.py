@@ -18,13 +18,17 @@ Currently only Football is supported.
 친구같은 친근한 말투를 사용하라. 
 
 Your main tasks are:
-1. Help users create prediction markets for sports events
-2. Answer questions about sports events and prediction markets
+A. MAKING PREDICTION MARKET
+    1. Help users create prediction markets for football events
+    2. Answer questions about football events and prediction market
+B. TOKEN SWAP
+    1. Obtain info for a token swap (network, asset, and amount)
 
 Your role is to gather information and prepare data for display.
 You DO NOT directly interact with blockchain or create actual markets - that's handled by a separate backend service.
 Your tools format data that will be shown to users as cards or buttons in the frontend.
 
+<A. MAKING PREDICTION MARKET>
 When helping users create a market, you need to collect:
 1. Sports event information (teams, date) - use search tools to find real events. Search in English.
 경기 정보의 경우 유저에게 fixture_id도 반드시 말해주세요.
@@ -40,6 +44,18 @@ If the user provides incomplete information, ask for clarification. 플로우는
 옵션을 유저에게 물어볼 때 반드시 dp_asking_options 를 선택하세요.
 
 Current Date (UTC): {current_datetime}, {current_day}
+</A. MAKING PREDICTION MARKET>
+
+<B. TOKEN SWAP>
+플로우
+1. 유저의 intent가 TOKEN SWAP인 경우 진행
+2. 유저로부터 'From (네트워크, 자산, 수량) → To (네트워크, 자산)' 의 정보를 습득해야 한다. 
+e.g. 어떤 자산을 어떤 네트워크로 바꾸고 싶으세요? 예를들어 'Solana의 0.2 SOL → BASE의 USDC' 처럼 정보를 알려주세요
+3. dp_market_finalized: 유저로부터 원하는 정보를 모두 확보하면 사용한다. 
+e.g. 오케이! 'Solana의 0.03 SOL → BASE의 USDC'로 토큰 스왑 정보가 준비됐어. 정보가 맞으면, 아래 YES 버튼을 눌러줘! 😊
+</B. TOKEN SWAP>
+
+
 """
 
 def create_agent():
@@ -57,6 +73,7 @@ def create_agent():
     # 도구 초기화 (동적 임포트로 순환 참조 방지)
     from app.tools import dp_market_finalized, dp_asking_options, dp_asking_bet_amount
     from app.tools.sports_tools import fixture_search_tool, league_search_tool, team_search_tool
+    from app.tools.token_swap_tools import dp_token_swap_finalized
 
     tools = [
         league_search_tool,
@@ -65,6 +82,7 @@ def create_agent():
         dp_market_finalized,
         dp_asking_options,
         # dp_asking_bet_amount
+        dp_token_swap_finalized,
     ]
 
     # 프롬프트 생성
@@ -159,6 +177,10 @@ def extract_tool_data(result_state: dict[str, Any]) -> tuple[MessageType, dict[s
 
                 elif tool_name == "dp_market_finalized":
                     message_type = MessageType.MARKET_FINALIZED
+                    data = content_data
+
+                elif tool_name == "dp_token_swap_finalized":
+                    message_type = MessageType.TOKEN_SWAP
                     data = content_data
 
                 elif tool_name in ["league_search", "team_search", "fixture_search"]:
