@@ -25,8 +25,10 @@ async def get_formatted_fixture_data(fixture_id: int) -> dict:
     # 경기 정보에서 필요한 데이터 추출
     home_team_id = fixture_data["teams"]["home"]["id"]
     home_team_name = fixture_data["teams"]["home"]["name"]
+    home_team_thumbnail = fixture_data["teams"]["home"]["logo"]
     away_team_id = fixture_data["teams"]["away"]["id"]
     away_team_name = fixture_data["teams"]["away"]["name"]
+    away_team_thumbnail = fixture_data["teams"]["away"]["logo"]
     league_id = fixture_data["league"]["id"]
     league_name = fixture_data["league"]["name"]
     league_country = fixture_data["league"]["country"]
@@ -42,8 +44,10 @@ async def get_formatted_fixture_data(fixture_id: int) -> dict:
     return {
         "home_team_id": home_team_id,
         "home_team_name": home_team_name,
+        "home_team_thumbnail": home_team_thumbnail,
         "away_team_id": away_team_id,
         "away_team_name": away_team_name,
+        "away_team_thumbnail": away_team_thumbnail,
         "league_id": league_id,
         "league_name": league_name,
         "league_country": league_country,
@@ -88,7 +92,8 @@ async def asking_options(
                 {
                     "name": selection.name,
                     "type": selection.type.value,
-                    "description": selection.description
+                    "description": selection.description,
+                    "thumbnail": fixture_info['home_team_thumbnail'] if selection.type.value == "win" else fixture_info['away_team_thumbnail']
                 }
                 for selection in selections_data
             ],
@@ -162,7 +167,12 @@ async def market_finalized(
                 "created_at": datetime.now().isoformat(),
             },
             "selections": [
-                {"name": selection.name, "type": selection.type.value, "description": selection.description}
+                {
+                    "name": selection.name, 
+                    "type": selection.type.value, 
+                    "description": selection.description,
+                    "thumbnail": fixture_info['home_team_thumbnail'] if selection.type.value == "win" else fixture_info['away_team_thumbnail']
+                }
                 for selection in selections_data
             ],
             "selected_type": selected_type,
