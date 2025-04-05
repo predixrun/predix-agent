@@ -123,34 +123,6 @@ async def asking_options(
         return {"error": str(e)}
 
 
-async def asking_bet_amount(
-    selection: str,
-    amount: float,
-    currency: str = "SOL",
-) -> dict:
-    """
-    베팅 금액 질의 도구
-
-    Args:
-        selection: 선택한 옵션
-        amount: 베팅 금액
-        currency: 토큰 (기본값: SOL)
-
-    Returns:
-        FE에 표시할 베팅 금액 data
-    """
-
-    try:
-        return {
-            "selected_option": selection,
-            "initial_amount": amount,
-            "currency": currency
-        }
-
-    except Exception as e:
-        logging.error(f"Error setting bet amount: {str(e)}")
-        return {"error": str(e), "amount": amount, "selection": selection}
-
 async def market_finalized(
         fixture_id: int,
         selections_data: list[Selection],
@@ -218,13 +190,6 @@ dp_asking_options = StructuredTool.from_function(
     name="dp_asking_options",
     description="Generates selectable options displayed in FE based on the game content. The returned values from this tool determine the options available for the user.",
     coroutine=asking_options
-)
-
-dp_asking_bet_amount = StructuredTool.from_function(
-    func=asking_bet_amount,
-    name="dp_asking_bet_amount",
-    description="Choose this tool when asking the user for the bet amount. It returns data for rendering the component in the FE.",
-    coroutine=asking_bet_amount
 )
 
 dp_market_finalized = StructuredTool.from_function(
