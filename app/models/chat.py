@@ -14,7 +14,7 @@ class MessageType(str, Enum):
     MARKET_OPTIONS = "MARKET_OPTIONS"
     MARKET_FINALIZED = "MARKET_FINALIZED"
     ERROR = "ERROR"
-    TOKEN_SWAP = "TOKEN_SWAP"
+    TOKEN_BRIDGE = "TOKEN_BRIDGE"
 
 
 class ChatRequest(BaseModel):
