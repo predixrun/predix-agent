@@ -71,7 +71,7 @@ def create_agent():
     )
 
     # 도구 초기화 (동적 임포트로 순환 참조 방지)
-    from app.tools import dp_market_finalized, dp_asking_options, dp_asking_bet_amount
+    from app.tools import dp_market_finalized, dp_asking_options
     from app.tools.sports_tools import fixture_search_tool, league_search_tool, team_search_tool
     from app.tools.token_swap_tools import dp_token_swap_finalized
 
@@ -81,7 +81,6 @@ def create_agent():
         fixture_search_tool,
         dp_market_finalized,
         dp_asking_options,
-        # dp_asking_bet_amount
         dp_token_swap_finalized,
     ]
 
@@ -170,10 +169,6 @@ def extract_tool_data(result_state: dict[str, Any]) -> tuple[MessageType, dict[s
                     message_type = MessageType.MARKET_OPTIONS
                     data = content_data  # 직렬화된 데이터 직접 사용
                     logging.debug(f"Market options data: {data}")
-
-                elif tool_name == "dp_asking_bet_amount":
-                    message_type = MessageType.BETTING_AMOUNT_REQUEST
-                    data = content_data
 
                 elif tool_name == "dp_market_finalized":
                     message_type = MessageType.MARKET_FINALIZED
