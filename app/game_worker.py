@@ -105,6 +105,8 @@ game_fixture_search_fn = Function(
     fn_description="Search for football fixtures (matches) by date, team ID, or specific fixture ID. Specify 'upcoming' for future (default) or past matches.",
     args=[
         Argument(name="date", type="string", description="Specific date in YYYY-MM-DD format (optional, you can set it to empty str)"),
+        Argument(name="team_id", type="integer", description="Specific team ID to retrieve (optional, If you don't know, set it to '' )"),
+        Argument(name="league_id", type="integer", description="Specific league ID to retrieve (optional, If you don't know, set it to '' )"),
         Argument(name="fixture_id", type="integer", description="Specific fixture ID to retrieve (optional, If you don't know, set it to '' )"),
         Argument(name="upcoming", type="boolean", description="True for upcoming (default), False for past fixtures"),
     ],
@@ -117,7 +119,7 @@ football_action_space = [
     game_fixture_search_fn,
 ]
 
-# Mock worker implementation for when the real worker cannot be initialized
+# for when the real worker cannot be initialized (429 Error)
 class MockWorker:
     def __init__(self):
         self.state = {"error": "Worker initialization failed"}
@@ -127,7 +129,7 @@ class MockWorker:
         logging.warning(f"MockWorker received request: {input_text}")
         return {"message": "The football information service is currently unavailable. Please try again later."}
 
-# Try to instantiate the GAME Worker, but fall back to mock if it fails
+
 try:
     # Instantiate the GAME Worker
     football_worker = Worker(
@@ -188,5 +190,5 @@ except Exception as e:
 
 
 if __name__ == "__main__":
-    result = football_worker.run("Find any upcoming fixtures")
+    result = football_worker.run("Find Manchester City’s match.")
     print(f"Worker State after run: {football_worker.state}")
