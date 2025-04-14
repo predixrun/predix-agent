@@ -68,18 +68,17 @@ def call_football_worker_sync(
     else:
          instruction += "No specific parameters provided." # Should ideally not happen if action is valid
 
-    logging.info(f"LangGraph Tool calling GAME Worker with instruction: {instruction}")
+    logging.info(f"GAME Worker instruction: {instruction}")
 
     try:
         # Run the async function and get the result
         result = run_async_safely(call_football_worker_async(instruction))
+        search_data = result.get("search_result", {})
         
-        # Check for error in the result
-        if isinstance(result, dict) and "error" in result:
+        if isinstance(result, dict) and "error" in result or search_data == {}:
             logging.error(f"GAME Worker returned an error: {result['error']}")
             return c_sports_tools(action, search_term, country, team_name, league_id, date, team_id, fixture_id, upcoming)
 
-        search_data = result.get("search_result", {})
         return search_data
 
     except Exception as e:

@@ -15,11 +15,11 @@ os.makedirs(os.path.join(os.getcwd(), "data", "memory"), exist_ok=True)
 def create_app() -> FastAPI:
     app = FastAPI(
         title="PrediX Agent Server",
-        version="0.3.0",
+        version="0.3.4",
         default_response_class=TemplateJSONResponse,
     )
     app.include_router(api_router)
-    logging.info("LangGraph Predix agent initialized successfully")
+    logging.info("PrediX agent initialized successfully")
     return app
 
 app = create_app()
