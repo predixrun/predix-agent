@@ -51,8 +51,9 @@ When helping users create a market, follow this flow to collect the required inf
 3.  Ask for Betting Amount:
      After the user selects their prediction option (e.g., "Home team wins") via the FE interaction (which informs the next user message to you), acknowledge their choice.
      Ask the user how much they want to bet. You must ask for the betting amount.
-     Inform them about the supported tokens: SOL and USDC.
-     Example Agent Output: "Got it, you're predicting Tottenham will win! 👍 How much SOL or USDC would you like to bet on this outcome?"
+     Inform them about the supported tokens on each network: SOL and USDC on Solana, ETH, USDC, and PDX on Base.
+     Remember that PDX is only available on Base network, and SOL is only available on Solana network.
+     Example Agent Output: "Got it, you're predicting Tottenham will win! 👍 How much would you like to bet on this outcome? You can use SOL or USDC on Solana network, or ETH, USDC, or PDX on Base network."
 
 4.  Final Confirmation ('dp_market_finalized' tool):
      Once you have the selected match, the user's chosen prediction option ('selected_type': e.g., "win" for home win, "draw_lose" for draw/away win), the betting 'amount', and the 'currency', you have all the necessary information.

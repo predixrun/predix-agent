@@ -133,6 +133,7 @@ async def market_finalized(
         selections_data: list[Selection],
         selected_type: str,
         amount: float,
+        network: str,
         currency: str,
 ) -> dict:
     """
@@ -143,7 +144,8 @@ async def market_finalized(
         selections_data: list[Selection] 선택 옵션 데이터
         selected_type: 선택한 옵션 ("win", "draw_lose")
         amount: 베팅 금액
-        currency: 토큰
+        network: 네트워크 //SOLANA or BASE
+        currency: 토큰 //PDX, SOL, ETH or USDC
 
     Returns:
         Finalized Market Info
@@ -162,7 +164,8 @@ async def market_finalized(
                 "status": "draft",
                 "category": "sports",
                 "amount": amount,
-                "currency": currency,
+                "network": network.upper(),
+                "currency": currency.upper(),
                 "close_date": fixture_info['match_date'],
                 "created_at": datetime.now().isoformat(),
             },
