@@ -10,3 +10,4 @@ httpx~=0.28.1
 python-dateutil~=2.9.0.post0
 langchain-core~=0.3.43
 langgraph~=0.3.5
+game_sdk
