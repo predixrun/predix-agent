@@ -164,7 +164,7 @@ async def market_finalized(
                 "status": "draft",
                 "category": "sports",
                 "amount": amount,
-                "network": network.upper(),
+                "networkNm": network.upper(),
                 "currency": currency.upper(),
                 "close_date": fixture_info['match_date'],
                 "created_at": datetime.now().isoformat(),
