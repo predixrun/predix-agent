@@ -95,17 +95,17 @@ game_team_search_fn = Function(
     fn_name="search_teams",
     fn_description="Search for football teams by name. Returns team info and upcoming fixtures.",
     args=[
-        Argument(name="name", type="string", description="Team name to search for"),
+        Argument(name="name", type="string", description="Team name to search for in English"),
     ],
     executable=sync_game_team_search
 )
 
 game_fixture_search_fn = Function(
     fn_name="search_fixtures",
-    fn_description="Search for football fixtures (matches) by date, team ID, league ID, or specific fixture ID. Specify 'upcoming' for future (default) or past matches.",
+    fn_description="Search for football fixtures (matches) by date, team ID, or specific fixture ID. Specify 'upcoming' for future (default) or past matches.",
     args=[
-        Argument(name="date", type="string", description="Specific date in YYYY-MM-DD format (optional)"),
-        Argument(name="fixture_id", type="integer", description="Specific fixture ID to retrieve (optional, If you don’t know, set it to '')"),
+        Argument(name="date", type="string", description="Specific date in YYYY-MM-DD format (optional, you can set it to empty str)"),
+        Argument(name="fixture_id", type="integer", description="Specific fixture ID to retrieve (optional, If you don't know, set it to '' )"),
         Argument(name="upcoming", type="boolean", description="True for upcoming (default), False for past fixtures"),
     ],
     executable=sync_game_fixture_search
@@ -117,17 +117,31 @@ football_action_space = [
     game_fixture_search_fn,
 ]
 
-# Instantiate the GAME Worker
-football_worker = Worker(
-    api_key=game_api_key,
-    description="An expert agent specialized in retrieving information about football teams, and fixtures using real-time data.",
-    instruction="Use the available functions to find the specific football information requested.",
-    get_state_fn=get_football_worker_state,
-    action_space=football_action_space,
-    model_name=LLAMA_MODEL_NAME
-)
+# Mock worker implementation for when the real worker cannot be initialized
+class MockWorker:
+    def __init__(self):
+        self.state = {"error": "Worker initialization failed"}
+        logging.warning("Using MockWorker because the real GAME Worker could not be initialized")
+    
+    def run(self, input_text: str) -> Any:
+        logging.warning(f"MockWorker received request: {input_text}")
+        return {"message": "The football information service is currently unavailable. Please try again later."}
 
-logging.info(f"GAME Football Worker initialized with model {LLAMA_MODEL_NAME} and {len(football_action_space)} actions.")
+# Try to instantiate the GAME Worker, but fall back to mock if it fails
+try:
+    # Instantiate the GAME Worker
+    football_worker = Worker(
+        api_key=game_api_key,
+        description="An expert agent specialized in retrieving information about football teams, and fixtures using real-time data.",
+        instruction="Use the available functions to find the specific football information requested.",
+        get_state_fn=get_football_worker_state,
+        action_space=football_action_space,
+        model_name=LLAMA_MODEL_NAME
+    )
+    logging.info(f"GAME Football Worker initialized with model {LLAMA_MODEL_NAME} and {len(football_action_space)} actions.")
+except Exception as e:
+    logging.error(f"Failed to initialize GAME Worker due to 429: {e}", exc_info=True)
+    football_worker = MockWorker()
 
 
 class AsyncWorkerWrapper:
@@ -138,17 +152,41 @@ class AsyncWorkerWrapper:
         
     async def run_async(self, input_text: str) -> Any:
         """Run the worker with the given input text."""
-        return self.worker.run(input_text)
-        
+        try:
+            return self.worker.run(input_text)
+        except Exception as e:
+            logging.error(f"Error running worker: {e}", exc_info=True)
+            return {"error": str(e), "message": "Failed to process your request. The football information service is currently unavailable."}
+    
+    @property
+    def state(self):
+        """Access the worker's state if available"""
+        if hasattr(self.worker, 'state'):
+            return self.worker.state
+        return {"error": "State not available"}
 
-async_football_worker = AsyncWorkerWrapper(football_worker)
+
+# Create the async wrapper with error handling
+try:
+    async_football_worker = AsyncWorkerWrapper(football_worker)
+except Exception as e:
+    logging.error(f"Failed to create AsyncWorkerWrapper: {e}", exc_info=True)
+    # Create a minimal async worker that just returns error messages
+    class MinimalAsyncWorker:
+        async def run_async(self, input_text: str) -> Any:
+            return {"error": "Service unavailable", "message": "The football information service is currently unavailable."}
+        
+        @property
+        def state(self):
+            return {"error": "Worker initialization failed", "last_search_result": None}
+        
+        @property
+        def worker(self):
+            return self  # Self-reference for compatibility
+    
+    async_football_worker = MinimalAsyncWorker()
 
 
 if __name__ == "__main__":
-    import asyncio
-
-    async def test_worker():
-        result = await async_football_worker.run_async("Find any upcoming fixtures")
-        print(f"Worker State after run: {football_worker.state}")
-
-    asyncio.run(test_worker())
+    result = football_worker.run("Find any upcoming fixtures")
+    print(f"Worker State after run: {football_worker.state}")

@@ -7,6 +7,37 @@ from langchain_core.tools import StructuredTool
 from app.game_worker import async_football_worker
 from app.tools.sports_tools import league_search, team_search, fixture_search
 
+async def call_football_worker_async(instruction: str) -> Dict[str, Any]:
+    """
+    Call the GAME football worker asynchronously.
+    """
+    try:
+        result = await async_football_worker.run_async(instruction)
+        
+        # Handle different response types
+        if hasattr(async_football_worker.worker, 'state'):
+            # Regular worker case
+            worker_state = async_football_worker.worker.state
+            state_result = worker_state.get("last_search_result", {})
+            logging.info(f"GAME Worker execution finished. Result from state: {state_result}")
+            
+            if state_result and "search_result" in state_result:
+                return state_result
+        
+        # For MockWorker or direct result case
+        if isinstance(result, dict):
+            if "message" in result:
+                logging.warning(f"Using direct result from worker: {result}")
+                return {"search_result": {}, "message": result.get("message", "No information available")}
+            elif "search_result" in result:
+                return result
+                
+        return {"search_result": {}, "message": "No results found"}
+            
+    except Exception as e:
+        logging.error(f"Error in call_football_worker_async: {e}", exc_info=True)
+        return {"error": str(e), "message": f"Failed to process request: {e}", "search_result": {}}
+
 def call_football_worker_sync(
     action: str,
     search_term: Optional[str] = None,
@@ -40,16 +71,13 @@ def call_football_worker_sync(
     logging.info(f"LangGraph Tool calling GAME Worker with instruction: {instruction}")
 
     try:
-        # GAME Worker
-        async_football_worker.run_async(instruction)
-        worker_state = async_football_worker.state
-        result = worker_state.get("last_search_result", {})
-
-        logging.info(f"GAME Worker execution finished. Result from state: {result}")
-
+        # Run the async function and get the result
+        result = run_async_safely(call_football_worker_async(instruction))
+        
+        # Check for error in the result
         if isinstance(result, dict) and "error" in result:
-             logging.error(f"GAME Worker returned an error: {result['error']}")
-             return c_sports_tools(action, search_term, country, team_name, league_id, date, team_id, fixture_id, upcoming)
+            logging.error(f"GAME Worker returned an error: {result['error']}")
+            return c_sports_tools(action, search_term, country, team_name, league_id, date, team_id, fixture_id, upcoming)
 
         search_data = result.get("search_result", {})
         return search_data
