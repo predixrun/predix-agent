@@ -98,7 +98,7 @@ def create_agent():
 
     # LLM 초기화
     llm = ChatOpenAI(
-        model="gpt-4o-2024-11-20",
+        model="gpt-4o",
         temperature=0.2,
         api_key=settings.OPENAI_API_KEY
     )
